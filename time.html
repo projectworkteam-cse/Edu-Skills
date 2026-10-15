@@ -1,0 +1,1615 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<!-- EDU-SKILL AI: per-user Firebase data isolation + cloud sync -->
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
+<script src="js/env.js"></script>
+<script src="js/eduskill-sync.js"></script>
+
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>EDU-SKILL'S AI - Study Timetable</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css">
+    <style>
+        :root {
+            --bg-light: #f8fafc;
+            --card-bg: #ffffff;
+            --card-border: #cbd5e1;
+            --primary-blue: #4338ca;
+            --primary-purple: #6d28d9;
+            --text-main: #0f172a;
+            --text-sub: #64748b;
+            --red-text: #dc2626;
+            --accent-green: #059669;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: Arial, Helvetica, sans-serif;
+        }
+
+        body {
+            background-color: var(--bg-light);
+            color: var(--text-main);
+            display: flex;
+            height: 100vh;
+            overflow: hidden;
+        }
+
+        .main-wrapper {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            overflow-y: auto;
+        }
+
+        .page-body {
+            padding: 24px;
+            max-width: 1200px;
+            margin: 0 auto;
+            width: 100%;
+        }
+
+        .card {
+            background-color: var(--card-bg);
+            border: 1px solid var(--card-border);
+            border-radius: 10px;
+            padding: 20px;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+            margin-top: 20px;
+        }
+
+        .card-title {
+            font-size: 18px;
+            font-weight: 700;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 16px;
+        }
+
+        .form-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 16px;
+            margin-bottom: 16px;
+        }
+
+        .form-group {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+        }
+
+        .form-group label {
+            font-size: 13px;
+            font-weight: 600;
+            color: var(--text-sub);
+        }
+
+        input, select {
+            height: 42px;
+            padding: 6px 12px;
+            border: 1px solid var(--card-border);
+            border-radius: 6px;
+            font-size: 14px;
+            outline: none;
+            background: #ffffff;
+        }
+
+        input:focus, select:focus {
+            border-color: var(--primary-blue);
+            box-shadow: 0 0 0 2px rgba(67, 56, 202, 0.1);
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, #4338ca, #6d28d9);
+            color: #ffffff;
+            border: none;
+            border-radius: 8px;
+            padding: 12px 20px;
+            font-weight: 600;
+            font-size: 14px;
+            cursor: pointer;
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .btn-primary:hover {
+            opacity: 0.9;
+        }
+
+        .timetable-box {
+            background-color: #ffffff;
+            padding: 24px;
+            border: 2px solid #000000;
+            margin-top: 10px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.05);
+            width: 100%;
+            overflow-x: auto;
+        }
+
+        .timetable-header {
+            text-align: center;
+            margin-bottom: 16px;
+            text-transform: uppercase;
+        }
+
+        .timetable-header h3 {
+            font-size: 18px;
+            font-weight: 800;
+            color: #000000;
+            margin-bottom: 4px;
+        }
+
+        .hours-summary {
+            font-size: 13px;
+            font-weight: 700;
+            color: var(--primary-purple);
+            margin-top: 4px;
+        }
+
+        .timetable-table {
+            width: 100%;
+            min-width: 0;
+            border-collapse: separate;
+            border-spacing: 0;
+            table-layout: auto;
+            text-align: center;
+            font-size: 13px;
+        }
+
+        .timetable-table th,
+        .timetable-table td {
+            border: 1px solid #d1d5db;
+            padding: 10px 8px;
+            color: #000000;
+            vertical-align: middle;
+            white-space: normal;
+        }
+
+        .timetable-table th {
+            font-weight: 800;
+            font-size: 12px;
+            background-color: #eef2ff;
+            color: #1e293b;
+        }
+
+        .timetable-table tbody tr:nth-child(odd) td {
+            background-color: #ffffff;
+        }
+
+        .timetable-table tbody tr:nth-child(even) td {
+            background-color: #f8fafc;
+        }
+
+        .timetable-table tbody tr:hover td {
+            background-color: #f1f5f9;
+        }
+
+        .timetable-table tbody tr td.day-col {
+            background-color: #e2e8f0;
+            font-weight: 800;
+        }
+
+        .day-col {
+            font-weight: 800;
+            text-align: left;
+            padding-left: 12px !important;
+            min-width: 96px;
+            width: 96px;
+            background-color: #f1f5f9;
+            position: sticky;
+            left: 0;
+            z-index: 2;
+        }
+
+        .break-badge {
+            display: inline-block;
+            background-color: #fef3c7;
+            color: #066bf0;
+            font-size: 10px;
+            font-weight: 700;
+            padding: 2px 6px;
+            border-radius: 4px;
+            margin-top: 4px;
+        }
+
+        .subject-title {
+            display: block;
+            font-weight: 800;
+            font-size: 13px;
+            color: var(--primary-blue);
+        }
+
+        .subject-cell {
+            position: relative;
+        }
+
+        .subject-cell:hover {
+            z-index: 9999;
+        }
+
+        .subject-cell:hover .topic-popover {
+            opacity: 1;
+            visibility: visible;
+            transform: translateX(-50%) translateY(0);
+        }
+
+        .topic-popover {
+            position: absolute;
+            top: 100%;
+            left: 50%;
+            transform: translateX(-50%) translateY(6px);
+            background: #0f172a;
+            color: #ffffff;
+            padding: 10px 14px;
+            border-radius: 8px;
+            font-size: 12px;
+            white-space: normal;
+            width: 220px;
+            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.35);
+            border: 1.5px solid #38bdf8;
+            opacity: 0;
+            visibility: hidden;
+            transition: all 0.2s ease-in-out;
+            z-index: 10000;
+            pointer-events: none;
+            text-align: left;
+        }
+
+        .topic-popover::after {
+            content: '';
+            position: absolute;
+            bottom: 100%;
+            left: 50%;
+            transform: translateX(-50%);
+            border-width: 6px;
+            border-style: solid;
+            border-color: transparent transparent #0f172a transparent;
+        }
+
+        .topic-popover-header {
+            font-weight: 700;
+            color: #38bdf8;
+            margin-bottom: 4px;
+            font-size: 11px;
+            text-transform: uppercase;
+        }
+
+        .cell-topic-text {
+            font-size: 11px;
+            color: var(--text-sub);
+            margin: 3px 0;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            max-width: 140px;
+            display: block;
+        }
+
+        .priority-badge {
+            font-size: 10px;
+            font-weight: 700;
+            padding: 2px 6px;
+            border-radius: 10px;
+            margin-top: 4px;
+            display: inline-block;
+        }
+
+        .priority-hard {
+            background: #fef2f2;
+            color: #dc2626;
+        }
+
+        .priority-medium {
+            background: #fffbeb;
+            color: #d97706;
+        }
+
+        .priority-easy {
+            background: #f0fdf4;
+            color: #16a34a;
+        }
+
+        .exam-urgency-badge {
+            display: block;
+            width: fit-content;
+            margin: 5px auto 0;
+            font-size: 9px;
+            font-weight: 700;
+            padding: 2px 6px;
+            border-radius: 10px;
+        }
+
+        .exam-urgency-badge.due-today {
+            background: #fef2f2;
+            color: #dc2626;
+        }
+
+        .exam-urgency-badge.due-soon {
+            background: #fffbeb;
+            color: #d97706;
+        }
+
+        .exam-urgency-badge.upcoming {
+            background: #eff6ff;
+            color: #2563eb;
+        }
+
+        .no-subjects-box {
+            padding: 30px 20px;
+            text-align: center;
+            background-color: #eef2ff;
+            border: 1px dashed #c7d2fe;
+            border-radius: 8px;
+            color: #4338ca;
+        }
+
+        .no-subjects-box i {
+            font-size: 32px;
+            margin-bottom: 10px;
+        }
+
+        .status-msg {
+            font-size: 13px;
+            margin-top: 10px;
+            color: var(--text-sub);
+        }
+
+        .btn-toggle {
+            background: transparent;
+            color: var(--primary-blue);
+            border: 2px solid var(--primary-blue);
+            border-radius: 8px;
+            padding: 10px 18px;
+            font-weight: 700;
+            font-size: 13px;
+            cursor: pointer;
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            margin-top: 16px;
+        }
+
+        .btn-toggle:hover {
+            background: #eef2ff;
+        }
+
+        .clock-input-box {
+            display: flex;
+            align-items: center;
+            border: 1.5px solid var(--card-border);
+            border-radius: 8px;
+            background: #f8fafc;
+            cursor: pointer;
+            padding: 0 12px;
+            height: 42px;
+        }
+
+        .clock-input-box input {
+            border: none;
+            background: transparent;
+            font-weight: 700;
+            font-size: 14px;
+            color: var(--primary-blue);
+            width: 100%;
+            cursor: pointer;
+            pointer-events: none;
+            height: 100%;
+        }
+
+        .clock-input-box i {
+            color: var(--primary-blue);
+            font-size: 16px;
+        }
+
+        .clock-overlay {
+            position: fixed;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(15, 23, 42, 0.5);
+            display: none;
+            justify-content: center;
+            align-items: center;
+            z-index: 2000;
+        }
+
+        .clock-modal {
+            background: #fff;
+            width: 300px;
+            border-radius: 16px;
+            padding: 20px;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.2);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        .clock-modal-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            width: 100%;
+            margin-bottom: 12px;
+        }
+
+        .clock-modal-header h4 { font-size: 16px; font-weight: 700; }
+        .clock-modal-header i { cursor: pointer; font-size: 16px; color: #94a3b8; }
+
+        .clock-display {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 28px;
+            font-weight: 800;
+            color: var(--primary-blue);
+            margin-bottom: 16px;
+        }
+
+        .clock-display span {
+            padding: 4px 8px;
+            border-radius: 6px;
+            background: #e0e7ff;
+            cursor: pointer;
+        }
+
+        .clock-display span.active {
+            background: var(--primary-blue);
+            color: #fff;
+        }
+
+        .ampm-group {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+            margin-left: 6px;
+        }
+
+        .ampm-btn {
+            font-size: 11px;
+            font-weight: 700;
+            padding: 3px 8px;
+            border-radius: 4px;
+            border: 1px solid var(--card-border);
+            background: #f8fafc;
+            cursor: pointer;
+        }
+
+        .ampm-btn.active {
+            background: var(--primary-purple);
+            color: #fff;
+            border-color: var(--primary-purple);
+        }
+
+        .clock-face {
+            width: 200px;
+            height: 200px;
+            border-radius: 50%;
+            background: #f1f5f9;
+            border: 2px solid #cbd5e1;
+            position: relative;
+            margin-bottom: 16px;
+        }
+
+        .clock-center-dot {
+            width: 10px; height: 10px;
+            background: var(--primary-blue);
+            border-radius: 50%;
+            position: absolute;
+            top: 50%; left: 50%;
+            transform: translate(-50%, -50%);
+            z-index: 10;
+        }
+
+        .clock-hand {
+            position: absolute;
+            bottom: 50%; left: 50%;
+            width: 3px; height: 70px;
+            background: var(--primary-blue);
+            transform-origin: bottom center;
+            border-radius: 3px;
+            transition: transform 0.2s ease;
+            z-index: 5;
+        }
+
+        .clock-num {
+            position: absolute;
+            width: 30px; height: 30px;
+            line-height: 30px;
+            text-align: center;
+            font-size: 12px;
+            font-weight: 700;
+            border-radius: 50%;
+            cursor: pointer;
+            user-select: none;
+        }
+
+        .clock-num:hover, .clock-num.sel {
+            background: var(--primary-blue);
+            color: #fff;
+        }
+
+        .clock-footer {
+            display: flex;
+            justify-content: flex-end;
+            gap: 10px;
+            width: 100%;
+        }
+
+        .clock-btn {
+            padding: 8px 16px;
+            border-radius: 6px;
+            font-weight: 700;
+            font-size: 13px;
+            cursor: pointer;
+            border: none;
+        }
+
+        .clock-cancel { background: #e2e8f0; color: #334155; }
+        .clock-ok { background: var(--primary-blue); color: #fff; }
+
+        /* ── SMART RESCHEDULE BAR ──────────────────────────────────────────── */
+        .smart-bar {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+            flex-wrap: wrap;
+            margin: 4px 0 14px;
+            padding: 10px 12px;
+            background: #eef2ff;
+            border: 1px solid #c7d2fe;
+            border-radius: 10px;
+        }
+
+        .smart-bar-info {
+            font-size: 12px;
+            color: #3730a3;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .smart-btn {
+            background: linear-gradient(135deg, #4f46e5, #6366f1);
+            color: #fff;
+            border: none;
+            border-radius: 8px;
+            padding: 8px 14px;
+            font-weight: 600;
+            font-size: 12px;
+            cursor: pointer;
+            display: inline-flex;
+            align-items: center;
+            gap: 7px;
+            white-space: nowrap;
+        }
+
+        .smart-btn:hover:not(:disabled) { opacity: 0.9; }
+        .smart-btn:disabled { opacity: 0.55; cursor: not-allowed; }
+
+        .smart-note {
+            margin: 0 0 14px;
+            font-size: 12px;
+            color: var(--text-main);
+            background: #f8fafc;
+            border: 1px solid var(--card-border);
+            border-radius: 10px;
+            padding: 10px 12px;
+            line-height: 1.55;
+        }
+
+        .smart-note i { color: var(--primary-purple); margin-right: 6px; }
+
+        /* ── RESPONSIVE: adapts to all screen sizes ─────────────────────────── */
+        @media (max-width: 1024px) {
+            .page-body {
+                padding: 18px 20px;
+            }
+        }
+
+        @media (max-width: 768px) {
+            .page-body {
+                padding: 14px;
+            }
+
+            .timetable-table {
+                min-width: 640px;
+            }
+        }
+
+        @media (max-width: 640px) {
+            .page-body {
+                padding: 12px;
+            }
+
+            .card {
+                padding: 16px;
+            }
+
+            .form-grid {
+                grid-template-columns: 1fr;
+                gap: 12px;
+            }
+
+            .btn-primary {
+                width: 100%;
+                justify-content: center;
+            }
+
+            .clock-modal {
+                width: min(300px, calc(100vw - 32px));
+                padding: 16px;
+            }
+
+            .clock-display {
+                font-size: 22px;
+                gap: 4px;
+            }
+
+            .topic-popover {
+                width: 180px;
+            }
+        }
+
+        @media (max-width: 480px) {
+            .page-body {
+                padding: 10px;
+                gap: 12px;
+            }
+
+            .timetable-box {
+                padding: 10px;
+                -webkit-overflow-scrolling: touch;
+            }
+
+            .timetable-header h3 {
+                font-size: 16px;
+            }
+
+            .smart-bar {
+                flex-direction: column;
+                align-items: stretch;
+                gap: 10px;
+            }
+
+            .smart-btn {
+                width: 100%;
+                justify-content: center;
+            }
+
+            .clock-display {
+                font-size: 18px;
+                flex-wrap: wrap;
+                justify-content: center;
+            }
+
+            .btn-toggle {
+                width: 100%;
+                justify-content: center;
+            }
+        }
+
+        @media (max-width: 340px) {
+            .page-body {
+                padding: 8px;
+            }
+
+            .timetable-box {
+                padding: 8px;
+            }
+
+            .clock-modal {
+                width: calc(100vw - 20px);
+                padding: 12px;
+            }
+        }
+    </style>
+</head>
+<body>
+
+    <div class="main-wrapper">
+        <div class="page-body">
+
+            <div id="timetableResultCard">
+                <div class="timetable-box">
+                    <div class="timetable-header">
+                        <h3>Study Time Table</h3>
+                        <div id="expiryStatus" class="hours-summary"></div>
+                        <div id="totalHoursSummary" class="hours-summary"></div>
+                    </div>
+
+                    <div class="smart-bar">
+                        <div class="smart-bar-info">
+                            <i class="fas fa-wand-magic-sparkles"></i>
+                            <span id="smartBarText">Let AI re-plan your week around weak topics and upcoming exams.</span>
+                        </div>
+                        <button class="smart-btn" id="smartRescheduleBtn" onclick="smartReschedule()">
+                            <i class="fas fa-arrows-rotate"></i> Smart Reschedule
+                        </button>
+                    </div>
+                    <div id="smartRescheduleNote" class="smart-note" style="display:none;"></div>
+
+                    <div id="timetableGrid">
+                        <div style="text-align:center; padding: 20px;">Loading Timetable...</div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="card" id="settingsCard" style="display: none;">
+                <div class="card-title">
+                    <i class="fas fa-cog" style="color: var(--primary-blue);"></i>
+                    <span>Study Preferences</span>
+                </div>
+
+                <div class="form-grid">
+                    <div class="form-group">
+                        <label for="studyShift">Study Shift</label>
+                        <select id="studyShift" onchange="toggleShiftFields()">
+                            <option value="both" selected>Both (Morning + Evening)</option>
+                            <option value="morning">Morning Only</option>
+                            <option value="evening">Evening Only</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div id="morningFields" class="form-grid" style="display:none; margin-top:12px;">
+                    <div class="form-group">
+                        <label>Morning Start Time</label>
+                        <div class="clock-input-box" onclick="openClock('morningStart')">
+                            <input type="text" id="morningStart" value="09:00 AM" readonly>
+                            <i class="fas fa-clock"></i>
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label for="morningHours">Morning Hours</label>
+                        <input lang="en" type="text" inputmode="decimal" id="morningHours" value="2" oninput="validateHours(this)">
+                    </div>
+                </div>
+
+                <div id="eveningFields" class="form-grid" style="display:none; margin-top:12px;">
+                    <div class="form-group">
+                        <label>Evening Start Time</label>
+                        <div class="clock-input-box" onclick="openClock('eveningStart')">
+                            <input type="text" id="eveningStart" value="06:00 PM" readonly>
+                            <i class="fas fa-clock"></i>
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label for="eveningHours">Evening Hours</label>
+                        <input lang="en" type="text" inputmode="decimal" id="eveningHours" value="1" oninput="validateHours(this)">
+                    </div>
+                </div>
+
+                <div id="slotField" class="form-grid" style="display:none; margin-top:12px;">
+                    <div class="form-group">
+                        <label for="slotDuration">Slot Duration</label>
+                        <select id="slotDuration">
+                            <option value="30">30 Minutes</option>
+                            <option value="45">45 Minutes</option>
+                            <option value="55" selected>55 Minutes (+ 5m break)</option>
+                            <option value="60">60 Minutes (No break)</option>
+                        </select>
+                    </div>
+                </div>
+
+                <button class="btn-primary" onclick="generateTimetable()">
+                    <i class="fas fa-rotate"></i> Regenerate Timetable
+                </button>
+                <div class="status-msg" id="statusMsg"></div>
+            </div>
+
+            <button class="btn-toggle" onclick="toggleSettingsCard()">
+                <i class="fas fa-sliders-h"></i> Study Preferences
+            </button>
+
+        </div>
+    </div>
+
+    <div class="clock-overlay" id="clockOverlay">
+        <div class="clock-modal">
+            <div class="clock-modal-header">
+                <h4>Select Time</h4>
+                <i class="fas fa-times" onclick="closeClock()"></i>
+            </div>
+            <div class="clock-display">
+                <span id="clockHour" class="active" onclick="clockMode='hours'; renderClock()">09</span>
+                <span>:</span>
+                <span id="clockMin" onclick="clockMode='minutes'; renderClock()">00</span>
+                <div class="ampm-group">
+                    <button class="ampm-btn active" id="ampmAM" onclick="setClockAMPM('AM')">AM</button>
+                    <button class="ampm-btn" id="ampmPM" onclick="setClockAMPM('PM')">PM</button>
+                </div>
+            </div>
+            <div class="clock-face" id="clockFace">
+                <div class="clock-center-dot"></div>
+                <div class="clock-hand" id="clockHand"></div>
+            </div>
+            <div class="clock-footer">
+                <button class="clock-btn clock-cancel" onclick="closeClock()">Cancel</button>
+                <button class="clock-btn clock-ok" onclick="applyClock()">Done</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const ONE_WEEK_MS = 7 * 24 * 60 * 60 * 1000;
+        let clockTargetId = null;
+        let clockH = 9, clockM = 0, clockAMPM = 'AM';
+        let clockMode = 'hours';
+
+        // ── SMART RESCHEDULING ────────────────────────────────────────────────
+        // When set, createStudyQueue/buildTopicUnits boost weak topics.
+        let smartWeakness = null;
+
+        // window.eduskillGroqFetch is loaded globally from env.js
+
+        // Builds a map of "subject||topic" (lowercase) -> weakness score (0-100).
+        // Prefers the AI Insights results, otherwise computes locally.
+        function buildWeaknessMap() {
+            try {
+                const stored = JSON.parse(localStorage.getItem('weakTopics') || '[]');
+                if (Array.isArray(stored) && stored.length) {
+                    const map = {};
+                    stored.forEach(w => {
+                        map[String(w.subject || '').toLowerCase() + '||' + String(w.topic || '').toLowerCase()] = Number(w.score) || 0;
+                    });
+                    return map;
+                }
+            } catch (e) {}
+
+            const subjects = JSON.parse(localStorage.getItem('subjects') || '[]');
+            const history = JSON.parse(localStorage.getItem('quizHistory') || '[]');
+            const quiz = {};
+            history.forEach(r => {
+                const topics = (Array.isArray(r.topics) && r.topics.length) ? r.topics : ['General'];
+                topics.forEach(t => {
+                    const k = (r.subject || '') + '||' + t;
+                    if (!quiz[k]) quiz[k] = { best: 0, attempts: 0 };
+                    quiz[k].attempts++;
+                    if (typeof r.pct === 'number' && r.pct > quiz[k].best) quiz[k].best = r.pct;
+                });
+            });
+
+            const map = {};
+            subjects.forEach(s => {
+                const diff = String(s.difficulty || 'medium').toLowerCase();
+                const diffW = diff === 'hard' ? 1 : diff === 'medium' ? 0.7 : 0.45;
+                (s.topics || []).forEach(t => {
+                    const name = t.topic || t.name || 'General';
+                    const q = quiz[(s.name || '') + '||' + name] || null;
+                    const perf = (q && q.attempts) ? (1 - q.best / 100) : 0.55;
+                    const comp = t.done ? 0.15 : 1;
+                    let score = Math.round((perf * 55 + comp * 25) * (0.7 + diffW * 0.5));
+                    score = Math.max(0, Math.min(100, score));
+                    map[String(s.name || '').toLowerCase() + '||' + String(name).toLowerCase()] = score;
+                });
+            });
+            return map;
+        }
+
+        function weakScoreFor(subjectName, topicName) {
+            if (!smartWeakness) return 0;
+            return smartWeakness[String(subjectName || '').toLowerCase() + '||' + String(topicName || '').toLowerCase()] || 0;
+        }
+
+        function subjectWeakAvg(subjectName) {
+            if (!smartWeakness) return 0;
+            const prefix = String(subjectName || '').toLowerCase() + '||';
+            const vals = Object.keys(smartWeakness)
+                .filter(k => k.indexOf(prefix) === 0)
+                .map(k => smartWeakness[k]);
+            if (!vals.length) return 0;
+            return vals.reduce((a, b) => a + b, 0) / vals.length;
+        }
+
+        document.addEventListener('DOMContentLoaded', () => {
+            loadSettings();
+
+            let buildInitialized = false;
+            let buildPollInterval = null;
+            let lastDataSignature = '';
+
+            function checkDataChange() {
+                const current = getScheduleInputSignature();
+                if (current !== lastDataSignature) {
+                    lastDataSignature = current;
+                    buildTimetable();
+                }
+            }
+
+            function initBuild() {
+                if (buildInitialized) {
+                    checkDataChange();
+                    return;
+                }
+                buildInitialized = true;
+                lastDataSignature = getScheduleInputSignature();
+                buildTimetable();
+
+                if (!buildPollInterval) {
+                    buildPollInterval = setInterval(checkDataChange, 1500);
+                }
+            }
+
+            window.addEventListener('eduskill-cloud-ready', () => {
+                initBuild();
+            }, { once: true });
+            setTimeout(() => {
+                if (!buildInitialized) initBuild();
+            }, 500);
+
+            window.addEventListener('storage', (e) => {
+                if (e.key === 'subjects' || e.key === 'exams' || e.key === 'timetable_preferences') {
+                    buildTimetable();
+                }
+            });
+        });
+
+        function toggleSettingsCard() {
+            const card = document.getElementById('settingsCard');
+            card.style.display = (card.style.display === 'none' || card.style.display === '') ? 'block' : 'none';
+        }
+
+        function loadSettings() {
+            try {
+                const saved = JSON.parse(localStorage.getItem('timetable_preferences'));
+                if (saved) {
+                    if (saved.shift) document.getElementById('studyShift').value = saved.shift;
+                    if (saved.morningStart) document.getElementById('morningStart').value = saved.morningStart;
+                    if (saved.eveningStart) document.getElementById('eveningStart').value = saved.eveningStart;
+                    if (saved.morningHours) { document.getElementById('morningHours').value = saved.morningHours; validateHours(document.getElementById('morningHours')); }
+                    if (saved.eveningHours) { document.getElementById('eveningHours').value = saved.eveningHours; validateHours(document.getElementById('eveningHours')); }
+                    if (saved.slot) document.getElementById('slotDuration').value = saved.slot;
+                }
+            } catch (e) {}
+            toggleShiftFields();
+        }
+
+        function validateHours(el) {
+            el.value = el.value.replace(',', '.');
+            if (el.value === '' || el.value === '.' || el.value === '0') return;
+            let v = parseFloat(el.value);
+            if (isNaN(v)) { el.value = '2'; return; }
+            if (v > 12) { el.value = '12'; return; }
+            if (v < 0.5) { el.value = '0.5'; return; }
+            if (el.value.includes('.') && el.value.split('.')[1].length > 1) {
+                v = Math.round(v * 4) / 4;
+                el.value = String(v);
+            }
+        }
+
+        function toggleShiftFields() {
+            const shift = document.getElementById('studyShift').value;
+            const morning = document.getElementById('morningFields');
+            const evening = document.getElementById('eveningFields');
+            const slot = document.getElementById('slotField');
+
+            morning.style.display = (shift === 'both' || shift === 'morning') ? 'grid' : 'none';
+            evening.style.display = (shift === 'both' || shift === 'evening') ? 'grid' : 'none';
+
+            const anyVisible = morning.style.display !== 'none' || evening.style.display !== 'none';
+            slot.style.display = anyVisible ? 'grid' : 'none';
+        }
+
+        function saveSettings() {
+            const prefs = {
+                morningStart: document.getElementById('morningStart').value,
+                eveningStart: document.getElementById('eveningStart').value,
+                shift: document.getElementById('studyShift').value,
+                morningHours: document.getElementById('morningHours').value,
+                eveningHours: document.getElementById('eveningHours').value,
+                slot: document.getElementById('slotDuration').value
+            };
+            localStorage.setItem('timetable_preferences', JSON.stringify(prefs));
+        }
+
+        function getScheduleInputSignature() {
+            const todayStr = new Date().toISOString().slice(0, 10);
+            const prefsStr = localStorage.getItem('timetable_preferences') || '';
+            return (localStorage.getItem('subjects') || '') + '::' + (localStorage.getItem('exams') || '') + '::' + prefsStr + '::' + todayStr;
+        }
+
+        function buildTimetable() {
+            const subjects = JSON.parse(localStorage.getItem('subjects') || '[]');
+            if (!subjects || subjects.length === 0) {
+                renderNoSubjects();
+                return;
+            }
+
+            const createdAt = parseInt(localStorage.getItem('timetable_created_at') || '0', 10);
+            const elapsed = Date.now() - createdAt;
+            const cached = localStorage.getItem('cached_timetable');
+            const inputSignature = getScheduleInputSignature();
+            const cachedSignature = localStorage.getItem('timetable_input_signature') || '';
+
+            if (cached && elapsed < ONE_WEEK_MS && cachedSignature === inputSignature) {
+                let data;
+                try {
+                    data = JSON.parse(cached);
+                } catch (e) {
+                    localStorage.removeItem('cached_timetable');
+                    localStorage.removeItem('timetable');
+                    generateTimetable();
+                    return;
+                }
+                if (data && Object.keys(data).length > 0) {
+                    renderExpiry(elapsed);
+                    renderTimetable(data);
+                    return;
+                }
+            }
+
+            generateTimetable();
+        }
+
+        function generateTimetable() {
+            const subjects = JSON.parse(localStorage.getItem('subjects') || '[]');
+            const exams = JSON.parse(localStorage.getItem('exams') || '[]');
+            if (!subjects || subjects.length === 0) {
+                localStorage.removeItem('cached_timetable');
+                localStorage.removeItem('timetable');
+                renderNoSubjects();
+                return;
+            }
+
+            saveSettings();
+
+            const shift = document.getElementById('studyShift').value;
+            const morningStartHour = parseTimeTo24(document.getElementById('morningStart').value || '09:00 AM');
+            const eveningStartHour = parseTimeTo24(document.getElementById('eveningStart').value || '06:00 PM');
+            
+            const rawMorningVal = parseFloat(document.getElementById('morningHours').value);
+            const rawEveningVal = parseFloat(document.getElementById('eveningHours').value);
+            const morningHrs = (shift === 'evening') ? 0 : (isNaN(rawMorningVal) || rawMorningVal <= 0 ? 2 : Math.min(12, rawMorningVal));
+            const eveningHrs = (shift === 'morning') ? 0 : (isNaN(rawEveningVal) || rawEveningVal <= 0 ? 1 : Math.min(12, rawEveningVal));
+
+            const slotMins = parseInt(document.getElementById('slotDuration').value, 10) || 55;
+            const breakMins = slotMins === 60 ? 0 : 5;
+
+            const timeSlots = [];
+
+            // Compute fitting sessions within the student's study hour budget (TIME-01)
+            function buildShiftSlots(startMinOfDay, totalHours) {
+                if (totalHours <= 0) return [];
+                const budgetMins = Math.round(totalHours * 60);
+                const slots = [];
+                let curStart = startMinOfDay;
+                let usedStudyMins = 0;
+
+                while (usedStudyMins + Math.min(slotMins, budgetMins - usedStudyMins) <= budgetMins && (budgetMins - usedStudyMins) >= 15) {
+                    const thisSlotMins = Math.min(slotMins, budgetMins - usedStudyMins);
+                    const curEnd = curStart + thisSlotMins;
+                    if (curEnd > 1440) break; // Do not roll past midnight
+                    slots.push(formatSlot(curStart, curEnd));
+                    usedStudyMins += thisSlotMins;
+                    curStart = curEnd + breakMins;
+                }
+                if (slots.length === 0 && budgetMins >= 15) {
+                    const thisSlotMins = Math.min(budgetMins, 1440 - startMinOfDay);
+                    if (thisSlotMins > 0) {
+                        slots.push(formatSlot(startMinOfDay, startMinOfDay + thisSlotMins));
+                    }
+                }
+                return slots;
+            }
+
+            if (shift === 'morning' || shift === 'both') {
+                const mSlots = buildShiftSlots(Math.round(morningStartHour * 60), morningHrs);
+                timeSlots.push(...mSlots);
+            }
+            if (shift === 'evening' || shift === 'both') {
+                const eSlots = buildShiftSlots(Math.round(eveningStartHour * 60), eveningHrs);
+                timeSlots.push(...eSlots);
+            }
+
+            if (timeSlots.length === 0) {
+                document.getElementById('statusMsg').textContent = 'No time slots generated. Check your shift settings.';
+                return;
+            }
+
+            const days = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
+            const studyQueue = createStudyQueue(subjects, exams, slotMins, days.length * timeSlots.length);
+            const schedule = {};
+            let studyIndex = 0;
+
+            days.forEach((day) => {
+                schedule[day] = timeSlots.map((slot) => {
+                    const study = studyQueue[studyIndex++] || {
+                        subject: 'General Revision',
+                        topic: 'General Revision',
+                        difficulty: 'medium',
+                        examName: '',
+                        examDate: '',
+                        daysLeft: null
+                    };
+                    return {
+                        time: slot,
+                        subject: study.subject,
+                        topic: study.topic,
+                        difficulty: study.difficulty,
+                        examName: study.examName,
+                        examDate: study.examDate,
+                        daysLeft: study.daysLeft
+                    };
+                });
+            });
+
+            localStorage.setItem('cached_timetable', JSON.stringify(schedule));
+            localStorage.setItem('timetable', JSON.stringify(schedule));
+            localStorage.setItem('timetable_created_at', Date.now().toString());
+            localStorage.setItem('timetable_input_signature', getScheduleInputSignature());
+
+            renderExpiry(0);
+            renderTimetable(schedule);
+
+            const msg = document.getElementById('statusMsg');
+            if (msg) msg.textContent = 'Timetable generated successfully!';
+        }
+
+        // ── SMART RESCHEDULE ──────────────────────────────────────────────────
+        // Re-plans the week: weak topics get extra sessions, completed topics are
+        // dropped, and exam-urgent subjects move up. Adds an AI explanation.
+        async function smartReschedule() {
+            const subjects = JSON.parse(localStorage.getItem('subjects') || '[]');
+            const msg = document.getElementById('statusMsg');
+            const btn = document.getElementById('smartRescheduleBtn');
+            const note = document.getElementById('smartRescheduleNote');
+
+            if (!subjects.length) {
+                if (msg) msg.textContent = 'Add subjects first so a smart plan can be built.';
+                return;
+            }
+
+            btn.disabled = true;
+            // Using innerHTML for icon markup is safe as the content is static.
+            btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Rescheduling...';
+            if (note) note.style.display = 'none';
+
+            const wmap = buildWeaknessMap();
+            const weakKeys = Object.keys(wmap).filter(k => wmap[k] >= 45);
+            const completed = subjects.reduce((a, s) => a + (s.topics || []).filter(t => t.done).length, 0);
+
+            // Regenerate with the weakness boost active
+            smartWeakness = wmap;
+            try {
+                generateTimetable();
+            } finally {
+                smartWeakness = null;
+            }
+
+            const weakList = weakKeys.slice(0, 8).map(k => {
+                const parts = k.split('||');
+                return `${parts[1]} (${parts[0]})`;
+            }).join(', ') || 'none detected';
+
+            const examCount = JSON.parse(localStorage.getItem('exams') || '[]')
+                .filter(e => {
+                    const d = new Date(String(e.date || '') + 'T00:00:00');
+                    const today = new Date(); today.setHours(0, 0, 0, 0);
+                    return !isNaN(d.getTime()) && d >= today;
+                }).length;
+
+            let summary = `Re-planned your week: ${weakKeys.length} weak topic(s) given extra sessions, ` +
+                `${completed} completed topic(s) removed, ${examCount} upcoming exam(s) prioritised.`;
+
+            let aiText = '';
+            try {
+                const data = await window.eduskillGroqFetch({
+                    model: 'openai/gpt-oss-120b',
+                    messages: [
+                        { role: 'system', content: 'You are a concise study coach. Reply in 2-3 short sentences of plain text, no markdown.' },
+                        {
+                            role: 'user',
+                            content: `A student's weekly study timetable was just re-planned. ` +
+                                `Weak topics now given extra sessions: ${weakList}. ` +
+                                `Completed topics removed: ${completed}. Upcoming exams prioritised: ${examCount}. ` +
+                                `Briefly explain how this new schedule helps the student improve.`
+                        }
+                    ],
+                    temperature: 0.5
+                });
+                aiText = (data.choices?.[0]?.message?.content || '').trim();
+            } catch (err) {
+                console.warn('Smart reschedule AI failed:', err.message);
+            }
+
+            if (note) {
+                note.style.display = 'block';
+                // note.innerHTML uses esc() to sanitize dynamic content.
+                note.innerHTML = `<i class="fas fa-robot"></i>${esc(aiText ? aiText + ' ' : '')}${esc(summary)}`;
+            }
+            if (msg) msg.textContent = 'Smart reschedule complete!';
+
+            btn.disabled = false;
+            // Static HTML with icon, safe.
+            btn.innerHTML = '<i class="fas fa-arrows-rotate"></i> Smart Reschedule';
+        }
+
+        function getNearestExam(subjectName, exams) {
+            if (!Array.isArray(exams)) return null;
+            const normalizedName = String(subjectName || '').toLowerCase();
+            const now = new Date();
+            now.setHours(0, 0, 0, 0);
+
+            return exams
+                .filter(exam => String(exam.subject || '').toLowerCase() === normalizedName)
+                .map(exam => {
+                    const examDate = new Date(String(exam.date || '') + 'T00:00:00');
+                    const valid = !Number.isNaN(examDate.getTime()) && examDate >= now;
+                    return {
+                        name: exam.name || 'Exam',
+                        date: exam.date || '',
+                        daysLeft: valid ? Math.round((examDate - now) / 86400000) : Infinity
+                    };
+                })
+                .filter(exam => Number.isFinite(exam.daysLeft))
+                .sort((a, b) => a.daysLeft - b.daysLeft)[0] || null;
+        }
+
+        function getExamUrgency(daysLeft) {
+            if (daysLeft <= 0) return 12;
+            return Math.max(1, Math.ceil(30 / daysLeft));
+        }
+
+        function buildTopicUnits(subject, slotMins) {
+            const subjectName = (typeof subject === 'object' ? subject.name : subject) || '';
+            const topics = subject && Array.isArray(subject.topics)
+                ? subject.topics.filter(topic => !topic || !topic.done)
+                : [];
+
+            if (!topics.length) {
+                return [{ topic: 'General Revision', minutes: slotMins }];
+            }
+
+            const units = [];
+            topics.forEach(topic => {
+                const topicName = typeof topic === 'object'
+                    ? (topic.topic || topic.name || 'General Revision')
+                    : String(topic || 'General Revision');
+                const minutes = Math.max(slotMins, Number(topic && topic.minutes) || slotMins);
+                let sessions = Math.max(1, Math.ceil(minutes / slotMins));
+
+                // Smart reschedule: weak topics get extra sessions
+                const weak = smartWeakness ? weakScoreFor(subjectName, topicName) : 0;
+                if (weak >= 65) sessions += 2;
+                else if (weak >= 45) sessions += 1;
+
+                for (let i = 0; i < sessions; i++) {
+                    units.push({ topic: topicName, minutes });
+                }
+            });
+            return units;
+        }
+
+        function createStudyQueue(subjects, exams, slotMins, totalSlots) {
+            const difficultyWeights = { hard: 3, medium: 2, easy: 1 };
+            const plans = subjects.map((subject, order) => {
+                const name = typeof subject === 'object' ? (subject.name || 'Subject') : String(subject || 'Subject');
+                const rawDifficulty = typeof subject === 'object' && subject.difficulty
+                    ? String(subject.difficulty).toLowerCase()
+                    : 'medium';
+                const difficulty = Object.prototype.hasOwnProperty.call(difficultyWeights, rawDifficulty)
+                    ? rawDifficulty
+                    : 'medium';
+                const exam = getNearestExam(name, exams);
+                const weakBoost = smartWeakness ? (subjectWeakAvg(name) / 25) : 0;
+                const score = difficultyWeights[difficulty] +
+                    (exam ? getExamUrgency(exam.daysLeft) : 0) +
+                    weakBoost;
+
+                return {
+                    name,
+                    difficulty,
+                    exam,
+                    score,
+                    order,
+                    assigned: 0,
+                    units: buildTopicUnits(typeof subject === 'object' ? subject : {}, slotMins)
+                };
+            });
+
+            const queue = [];
+            for (let slotIndex = 0; slotIndex < totalSlots; slotIndex++) {
+                let available = plans.filter(plan => plan.units.length > 0);
+                if (!available.length) available = plans.slice();
+                if (!available.length) break;
+
+                available.sort((a, b) => {
+                    if ((a.assigned === 0) !== (b.assigned === 0)) return a.assigned === 0 ? -1 : 1;
+                    const aRatio = a.assigned / a.score;
+                    const bRatio = b.assigned / b.score;
+                    if (aRatio !== bRatio) return aRatio - bRatio;
+                    if (a.score !== b.score) return b.score - a.score;
+                    return a.order - b.order;
+                });
+
+                const plan = available[0];
+                const unit = plan.units.length
+                    ? plan.units.shift()
+                    : { topic: 'General Revision', minutes: slotMins };
+                plan.assigned += 1;
+
+                queue.push({
+                    subject: plan.name,
+                    topic: unit.topic,
+                    difficulty: plan.difficulty,
+                    examName: plan.exam ? plan.exam.name : '',
+                    examDate: plan.exam ? plan.exam.date : '',
+                    daysLeft: plan.exam ? plan.exam.daysLeft : null
+                });
+            }
+
+            return queue;
+        }
+
+        function formatSlot(startMins, endMins) {
+            function fmt(totalMins) {
+                const h24 = Math.floor(totalMins / 60) % 24;
+                const m = totalMins % 60;
+                const period = h24 >= 12 ? 'PM' : 'AM';
+                const h12 = h24 % 12 || 12;
+                return `${h12 < 10 ? '0' + h12 : h12}:${m < 10 ? '0' + m : m} ${period}`;
+            }
+            return `${fmt(startMins)} - ${fmt(endMins)}`;
+        }
+
+        function renderExpiry(elapsed) {
+            const remaining = ONE_WEEK_MS - elapsed;
+            const daysLeft = Math.floor(remaining / (24 * 60 * 60 * 1000));
+            const hoursLeft = Math.floor((remaining % (24 * 60 * 60 * 1000)) / (60 * 60 * 1000));
+
+            const el = document.getElementById('expiryStatus');
+            el.style.display = 'block';
+            // Use textContent for plain text to avoid XSS.
+            el.textContent = `Expires in ${daysLeft}d ${hoursLeft}h`;
+        }
+
+        function renderNoSubjects() {
+            const container = document.getElementById('timetableGrid');
+            document.getElementById('expiryStatus').style.display = 'none';
+            document.getElementById('totalHoursSummary').style.display = 'none';
+
+            container.innerHTML = `
+                <div class="no-subjects-box">
+                    <i class="fas fa-folder-open"></i>
+                    <h4>No Subjects Found</h4>
+                    <p>Add subjects in the Subjects & Exams module to auto-generate your study timetable.</p>
+                </div>
+            `;
+        }
+
+        function getTopicForSubject(subjectName, dayIdx, slotIdx) {
+            const subjects = JSON.parse(localStorage.getItem('subjects') || '[]');
+            const found = subjects.find(s => {
+                const n = typeof s === 'object' ? s.name : s;
+                return (n || '').toLowerCase() === subjectName.toLowerCase();
+            });
+
+            if (found && typeof found === 'object' && Array.isArray(found.topics) && found.topics.length > 0) {
+                const idx = (dayIdx + slotIdx) % found.topics.length;
+                const t = found.topics[idx];
+                if (typeof t === 'object') return t.topic || t.name || JSON.stringify(t);
+                if (typeof t === 'string') return t;
+            }
+            return 'General Revision';
+        }
+
+        function getDifficulty(subjectName) {
+            const subjects = JSON.parse(localStorage.getItem('subjects') || '[]');
+            const found = subjects.find(s => {
+                const n = typeof s === 'object' ? s.name : s;
+                return (n || '').toLowerCase() === subjectName.toLowerCase();
+            });
+            if (found && typeof found === 'object' && found.difficulty) return found.difficulty.toLowerCase();
+            return 'medium';
+        }
+
+        function renderTimetable(schedule) {
+            const container = document.getElementById('timetableGrid');
+            const summary = document.getElementById('totalHoursSummary');
+            const days = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
+
+            let maxSlots = 0;
+            days.forEach(d => {
+                if (schedule[d]) maxSlots = Math.max(maxSlots, schedule[d].length);
+            });
+
+            // Calculate actual study minutes from scheduled time slots (TIME-02)
+            let totalDailyStudyMinutes = 0;
+            const refDay = days.find(d => schedule[d] && schedule[d].length > 0);
+            if (refDay && schedule[refDay]) {
+                schedule[refDay].forEach(s => {
+                    if (s.time && s.time.includes('-')) {
+                        const parts = s.time.split('-');
+                        const start = parseTimeTo24(parts[0].trim()) * 60;
+                        const end = parseTimeTo24(parts[1].trim()) * 60;
+                        const dur = Math.round(end - start);
+                        if (dur > 0) totalDailyStudyMinutes += dur;
+                    }
+                });
+            }
+            if (totalDailyStudyMinutes === 0 && maxSlots > 0) {
+                const slotMins = parseInt(document.getElementById('slotDuration').value, 10) || 55;
+                totalDailyStudyMinutes = maxSlots * slotMins;
+            }
+
+            const dailyHrsFormatted = (totalDailyStudyMinutes / 60).toFixed(1).replace(/\.0$/, '');
+            const weeklyMinutes = totalDailyStudyMinutes * 7;
+            const weeklyHrsFormatted = (weeklyMinutes / 60).toFixed(1).replace(/\.0$/, '');
+
+            if (summary) {
+                summary.style.display = 'block';
+                summary.textContent = `${maxSlots} Session${maxSlots !== 1 ? 's' : ''} (${dailyHrsFormatted}h)/Day • ${weeklyHrsFormatted} Study Hours/Week`;
+            }
+
+            const timeHeaders = [];
+            if (refDay && schedule[refDay]) {
+                schedule[refDay].forEach(s => timeHeaders.push(s.time || ''));
+            }
+
+            let html = `<table class="timetable-table" role="table" aria-label="Weekly study schedule timetable"><thead><tr><th class="day-col" scope="col">DAY</th>`;
+            for (let i = 0; i < maxSlots; i++) {
+                html += `<th scope="col">${esc(timeHeaders[i] || 'Slot ' + (i + 1))}</th>`;
+            }
+            html += `</tr></thead><tbody>`;
+
+            days.forEach((day, dayIdx) => {
+                if (!schedule[day]) return;
+                html += `<tr><td class="day-col" scope="row"><b>${day}</b></td>`;
+                schedule[day].forEach((slot, slotIdx) => {
+                    const topic = slot.topic || getTopicForSubject(slot.subject, dayIdx, slotIdx);
+                    const diff = String(slot.difficulty || getDifficulty(slot.subject)).toLowerCase();
+                    const diffClass = diff === 'hard' ? 'priority-hard' : diff === 'easy' ? 'priority-easy' : 'priority-medium';
+
+                    // Compute daysLeft dynamically from calendar today (TIME-04)
+                    let daysLeft = null;
+                    if (slot.examDate) {
+                        const exD = new Date(slot.examDate + 'T00:00:00');
+                        if (!isNaN(exD.getTime())) {
+                            const today0 = new Date(); today0.setHours(0, 0, 0, 0);
+                            daysLeft = Math.round((exD - today0) / 86400000);
+                        }
+                    }
+                    if (daysLeft === null && slot.daysLeft !== null && slot.daysLeft !== undefined) {
+                        daysLeft = Number(slot.daysLeft);
+                    }
+
+                    const dueText = daysLeft === 0
+                        ? 'today'
+                        : daysLeft === 1
+                            ? 'tomorrow'
+                            : Number.isFinite(daysLeft) ? `in ${daysLeft} days` : '';
+                    const urgencyClass = daysLeft !== null && daysLeft <= 3
+                        ? 'due-today'
+                        : daysLeft !== null && daysLeft <= 7
+                            ? 'due-soon'
+                            : 'upcoming';
+                    const examDetails = slot.examName
+                        ? `<div class="topic-popover-header">Exam</div><div>${esc(slot.examName)} &bull; ${dueText}${slot.examDate ? ' &bull; ' + esc(slot.examDate) : ''}</div>`
+                        : '';
+                    const examBadge = slot.examName && dueText
+                        ? `<span class="exam-urgency-badge ${urgencyClass}">Exam ${dueText}</span>`
+                        : '';
+
+                    html += `
+                        <td class="subject-cell">
+                            <div class="topic-popover">
+                                <div class="topic-popover-header"><i class="fas fa-book-open"></i> Topic</div>
+                                <div>${esc(topic)}</div>
+                                ${examDetails}
+                            </div>
+                            <span class="subject-title">${esc(slot.subject)}</span>
+                            <div class="cell-topic-text" title="${esc(topic)}"><i class="fas fa-book-open" style="font-size:10px;opacity:0.7;"></i> ${esc(topic)}</div>
+                            <span class="priority-badge ${diffClass}">${diff}</span>
+                            ${examBadge}
+                        </td>
+                    `;
+                });
+                html += `</tr>`;
+            });
+
+            html += `</tbody></table>`;
+            container.innerHTML = html;
+        }
+
+        function parseTimeTo24(str) {
+            const parts = str.trim().split(/[: ]/);
+            if (parts.length < 2) return 9;
+            let h = parseInt(parts[0], 10) || 9;
+            const m = parseInt(parts[1], 10) || 0;
+            const ampm = (parts[2] || 'AM').toUpperCase();
+            if (ampm === 'PM' && h !== 12) h += 12;
+            if (ampm === 'AM' && h === 12) h = 0;
+            return h + m / 60;
+        }
+
+        function openClock(targetId) {
+            clockTargetId = targetId;
+            const val = document.getElementById(targetId).value || '09:00 AM';
+            const parts = val.trim().split(/[: ]/);
+            clockH = parseInt(parts[0], 10) || 9;
+            clockM = parseInt(parts[1], 10) || 0;
+            clockAMPM = (parts[2] || 'AM').toUpperCase();
+            clockMode = 'hours';
+            setClockAMPM(clockAMPM);
+            renderClock();
+            document.getElementById('clockOverlay').style.display = 'flex';
+        }
+
+        function closeClock() {
+            document.getElementById('clockOverlay').style.display = 'none';
+        }
+
+        function setClockAMPM(p) {
+            clockAMPM = p;
+            document.getElementById('ampmAM').classList.toggle('active', p === 'AM');
+            document.getElementById('ampmPM').classList.toggle('active', p === 'PM');
+        }
+
+        function renderClock() {
+            const face = document.getElementById('clockFace');
+            const hand = document.getElementById('clockHand');
+            face.querySelectorAll('.clock-num').forEach(el => el.remove());
+
+            const r = 74, cx = 100, cy = 100;
+
+            document.getElementById('clockHour').classList.toggle('active', clockMode === 'hours');
+            document.getElementById('clockMin').classList.toggle('active', clockMode === 'minutes');
+            document.getElementById('clockHour').textContent = clockH < 10 ? '0' + clockH : clockH;
+            document.getElementById('clockMin').textContent = clockM < 10 ? '0' + clockM : clockM;
+
+            if (clockMode === 'hours') {
+                for (let h = 1; h <= 12; h++) {
+                    const a = (h * 30 - 90) * Math.PI / 180;
+                    const x = cx + r * Math.cos(a) - 15;
+                    const y = cy + r * Math.sin(a) - 15;
+                    const d = document.createElement('div');
+                    d.className = 'clock-num' + (h === clockH ? ' sel' : '');
+                    d.style.left = x + 'px';
+                    d.style.top = y + 'px';
+                    d.textContent = h;
+                    d.onclick = () => { clockH = h; clockMode = 'minutes'; renderClock(); };
+                    face.appendChild(d);
+                }
+                hand.style.transform = 'rotate(' + (clockH * 30) + 'deg)';
+            } else {
+                for (let m = 0; m < 60; m += 5) {
+                    const v = m === 0 ? 12 : m / 5;
+                    const a = (v * 30 - 90) * Math.PI / 180;
+                    const x = cx + r * Math.cos(a) - 15;
+                    const y = cy + r * Math.sin(a) - 15;
+                    const d = document.createElement('div');
+                    d.className = 'clock-num' + (m === clockM ? ' sel' : '');
+                    d.style.left = x + 'px';
+                    d.style.top = y + 'px';
+                    d.textContent = m < 10 ? '0' + m : m;
+                    d.onclick = () => { clockM = m; renderClock(); };
+                    face.appendChild(d);
+                }
+                hand.style.transform = 'rotate(' + ((clockM / 5) * 30) + 'deg)';
+            }
+        }
+
+        function applyClock() {
+            if (clockTargetId) {
+                const h = clockH < 10 ? '0' + clockH : clockH;
+                const m = clockM < 10 ? '0' + clockM : clockM;
+                document.getElementById(clockTargetId).value = h + ':' + m + ' ' + clockAMPM;
+            }
+            closeClock();
+        }
+
+        function esc(str) {
+            return String(str || '').replace(/[&<>"']/g, c => ({
+                '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+            }[c]));
+        }
+    </script>
+</body>
+</html>

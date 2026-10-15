@@ -1,0 +1,912 @@
+<!DOCTYPE html>
+<!-- 
+    FILE: dash.html
+    PURPOSE: The Dashboard page — shown inside the iframe on the main page.
+    It displays a greeting with the time of day, a weekly task progress chart,
+    an upcoming exams mini-list, and four key metric cards (progress %, tasks, etc.).
+    All data is read directly from localStorage so it stays in sync
+    with whatever the user has added in Subjects & Exams and Today's Tasks.
+-->
+<html lang="en">
+
+<head>
+<!-- EDU-SKILL AI: per-user Firebase data isolation + cloud sync -->
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
+<script src="js/env.js"></script>
+<script src="js/eduskill-sync.js"></script>
+
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>EDU-SKILL'S AI - Dashboard</title>
+
+    <!-- FontAwesome: icon library used for all the small icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css">
+
+    <!-- Chart.js: pinned library used to draw the line chart (study progress graph) (UI-02) -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.2/dist/chart.umd.min.js"></script>
+
+    <style>
+        /* ============================================================
+           COLOR VARIABLES
+           Reusable color names so we can change them in one place.
+        ============================================================ */
+        :root {
+            --bg-dark: #f8fafc;
+            /* Light page background */
+            --card-bg: #ffffff;
+            /* White card background */
+            --card-border: #e2e8f0;
+            /* Subtle card border */
+            --primary-blue: #4338ca;
+            /* Main blue for buttons/charts */
+            --primary-purple: #6d28d9;
+            /* Purple accent */
+            --accent-green: #059669;
+            /* Green for success indicators */
+            --accent-orange: #d97706;
+            /* Orange for task/warning items */
+            --text-main: #0f172a;
+            /* Dark text color */
+            --text-sub: #64748b;
+            /* Gray text for labels/secondary info */
+        }
+
+        /* Remove default spacing from all elements; use clean font */
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+
+        /* Page fills viewport, scrolls vertically cleanly */
+        body {
+            background-color: var(--bg-dark);
+            color: var(--text-main);
+            min-height: 100vh;
+            overflow-x: hidden;
+            overflow-y: auto;
+        }
+
+        .main-wrapper {
+            width: 100%;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            overflow-x: hidden;
+            overflow-y: auto;
+        }
+
+        /* Container that spaces out all dashboard sections.
+           Uses flex-direction column with gap so sections flow naturally and never overlap. */
+        .dashboard-grid {
+            display: flex;
+            flex-direction: column;
+            gap: 22px;
+            padding: 22px 28px;
+            max-width: 1400px;
+            margin: 0 auto;
+            width: 100%;
+            min-width: 0;
+            box-sizing: border-box;
+        }
+
+        /* ── GREETING BAR ────────────────────────────────────────────────────
+           Row at the top: "Good Morning!" on the left, today's date on the right. */
+        .greeting-bar {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 12px;
+            width: 100%;
+            min-width: 0;
+        }
+
+        .greeting-text {
+            min-width: 0;
+        }
+
+        .greeting-text h1 {
+            font-size: 22px;
+            font-weight: 700;
+            color: var(--text-main);
+            word-break: break-word;
+        }
+
+        .greeting-text p {
+            color: var(--text-sub);
+            font-style: italic;
+            font-size: 13px;
+            margin-top: 4px;
+        }
+
+        /* Small pill-shaped badge showing the current date */
+        .date-badge {
+            background: var(--card-bg);
+            border: 1px solid var(--card-border);
+            padding: 7px 14px;
+            border-radius: 8px;
+            font-size: 13px;
+            color: var(--text-main);
+            white-space: nowrap;
+            flex-shrink: 0;
+        }
+
+        /* ── CARD STYLES ─────────────────────────────────────────────────────
+           White rounded boxes used to group related content. */
+        .card {
+            background-color: var(--card-bg);
+            border: 1px solid var(--card-border);
+            border-radius: 14px;
+            padding: 20px;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+            min-width: 0;
+            overflow: hidden;
+            box-sizing: border-box;
+        }
+
+        .card-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 14px;
+            flex-wrap: wrap;
+            gap: 10px;
+            min-width: 0;
+        }
+
+        .card-title {
+            font-size: 15px;
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            color: var(--text-main);
+            min-width: 0;
+        }
+
+        /* Chart.js line graph container.
+           Has a dedicated relative wrapper with explicit height so Chart.js
+           renders crisply and never collapses or overlaps adjacent cards. */
+        .chart-container {
+            position: relative;
+            width: 100%;
+            max-width: 100%;
+            min-width: 0;
+            height: 260px;
+            box-sizing: border-box;
+        }
+
+        .chart-container canvas {
+            display: block;
+            width: 100% !important;
+            max-width: 100% !important;
+            height: 100% !important;
+            max-height: 100% !important;
+        }
+
+        /* Custom legend row: clean wrapping pills */
+        .chart-legend {
+            display: flex;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 8px 16px;
+            margin-bottom: 12px;
+            font-size: 12px;
+            color: var(--text-sub);
+        }
+
+        .chart-legend-item {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            white-space: nowrap;
+        }
+
+        /* Small line swatch that matches each series' colour (dashed for topics) */
+        .chart-legend-swatch {
+            width: 16px;
+            height: 3px;
+            border-radius: 2px;
+            flex: 0 0 auto;
+        }
+
+        /* ── METRICS GRID ────────────────────────────────────────────────────
+           Four stat cards in a row. */
+        .metrics-grid {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 14px;
+            width: 100%;
+            min-width: 0;
+        }
+
+        .metric-card {
+            background: #f1f5f9;
+            border: 1px solid var(--card-border);
+            border-radius: 12px;
+            padding: 18px 16px;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            min-width: 0;
+            box-sizing: border-box;
+        }
+
+        .metric-card p {
+            font-size: 12px;
+            color: var(--text-sub);
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .metric-card h4 {
+            font-size: 20px;
+            margin: 6px 0 3px;
+            color: var(--text-main);
+            font-weight: 700;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .metric-card small {
+            font-size: 10px;
+            color: var(--text-sub);
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        /* ── UPCOMING EXAMS MINI-LIST (inside dashboard) ─────────────────────
+           Compact list of exams shown next to the chart. */
+        .exam-row {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 9px 0;
+            border-bottom: 1px solid #f1f5f9;
+            min-width: 0;
+        }
+
+        .exam-row:last-child {
+            border-bottom: none;
+        }
+
+        /* Color dot: red = urgent, yellow = soon, green = plenty of time */
+        .exam-dot {
+            width: 9px;
+            height: 9px;
+            border-radius: 50%;
+            flex-shrink: 0;
+        }
+
+        .exam-dot.urgent {
+            background: #ef4444;
+        }
+
+        .exam-dot.soon {
+            background: #f59e0b;
+        }
+
+        .exam-dot.later {
+            background: var(--accent-green);
+        }
+
+        /* Exam name and subject text */
+        .exam-row-info {
+            flex: 1;
+            min-width: 0;
+        }
+
+        .exam-row-name {
+            font-size: 13px;
+            font-weight: 600;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .exam-row-sub {
+            font-size: 11px;
+            color: var(--text-sub);
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        /* Small colored pill showing "Today!", "Tomorrow", or "X days" */
+        .exam-days-tag {
+            font-size: 10px;
+            font-weight: 700;
+            padding: 2px 8px;
+            border-radius: 10px;
+            white-space: nowrap;
+            flex-shrink: 0;
+        }
+
+        .days-urgent {
+            background: #fef2f2;
+            color: #ef4444;
+        }
+
+        .days-soon {
+            background: #fffbeb;
+            color: #d97706;
+        }
+
+        .days-later {
+            background: #f0fdf4;
+            color: #16a34a;
+        }
+
+        /* Placeholder text when a list is empty */
+        .empty-msg {
+            font-size: 12px;
+            color: var(--text-sub);
+            text-align: center;
+            padding: 24px 0;
+        }
+
+        /* Two-column layout: chart on the left, exam list on the right. */
+        .two-col {
+            display: grid;
+            grid-template-columns: 1.6fr 1fr;
+            gap: 22px;
+            width: 100%;
+            min-width: 0;
+            align-items: stretch;
+        }
+
+        .two-col>.card {
+            display: flex;
+            flex-direction: column;
+            min-width: 0;
+        }
+
+        /* Exam list fills the card and scrolls if there are many exams */
+        #dashExamsList {
+            flex: 1;
+            min-height: 100px;
+            max-height: 300px;
+            overflow-y: auto;
+        }
+
+        /* Small dropdown for the chart time filter (This Week / This Month) */
+        select {
+            background: var(--bg-dark);
+            color: var(--text-main);
+            border: 1px solid var(--card-border);
+            padding: 5px 10px;
+            border-radius: 6px;
+            font-size: 12px;
+            cursor: pointer;
+        }
+
+        /* Responsive: adapts to all screen sizes */
+        @media (max-width: 1024px) {
+            .dashboard-grid {
+                padding: 18px 20px;
+                gap: 18px;
+            }
+
+            .two-col {
+                gap: 18px;
+            }
+        }
+
+        @media (max-width: 900px) {
+            .two-col {
+                grid-template-columns: 1fr;
+                gap: 16px;
+            }
+
+            .metrics-grid {
+                grid-template-columns: repeat(2, 1fr);
+                gap: 12px;
+            }
+
+            #dashExamsList {
+                max-height: 240px;
+            }
+        }
+
+        @media (max-width: 640px) {
+            .dashboard-grid {
+                padding: 14px;
+                gap: 14px;
+            }
+
+            .greeting-text h1 {
+                font-size: 19px;
+            }
+        }
+
+        @media (max-width: 480px) {
+            .dashboard-grid {
+                padding: 10px;
+                gap: 12px;
+            }
+
+            .greeting-bar {
+                flex-direction: column;
+                align-items: flex-start;
+                gap: 8px;
+            }
+
+            .date-badge {
+                align-self: flex-start;
+            }
+
+            .greeting-text h1 {
+                font-size: 18px;
+            }
+
+            .greeting-text p {
+                font-size: 12px;
+            }
+
+            .metrics-grid {
+                grid-template-columns: repeat(2, 1fr);
+                gap: 8px;
+            }
+
+            .metric-card {
+                padding: 12px 10px;
+            }
+
+            .metric-card h4 {
+                font-size: 17px;
+                margin: 4px 0 2px;
+            }
+
+            .metric-card p {
+                font-size: 11px;
+            }
+
+            .card {
+                padding: 14px;
+                border-radius: 12px;
+            }
+
+            .chart-container {
+                height: 210px;
+            }
+
+            .chart-legend {
+                gap: 6px 10px;
+                font-size: 11px;
+            }
+        }
+
+        @media (max-width: 340px) {
+            .metrics-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .greeting-text h1 {
+                font-size: 16px;
+            }
+
+            .dashboard-grid {
+                padding: 8px;
+            }
+        }
+    </style>
+</head>
+
+<body>
+    <div class="main-wrapper">
+        <div class="dashboard-grid">
+
+            <!-- ── GREETING SECTION ───────────────────────────────────────────
+                 Shows "Good Morning/Afternoon/Evening!" + a motivational quote
+                 on the left, and today's formatted date on the right.
+                 Both are set by JavaScript on page load. -->
+            <div class="greeting-bar">
+                <div class="greeting-text">
+                    <h1 id="greetingMessage">👋 Hello!</h1>
+                    <p id="motivationalQuote">Loading quote...</p>
+                </div>
+                <div class="date-badge" id="currentDate">
+                    <i class="far fa-calendar"></i> &nbsp;--
+                </div>
+            </div>
+
+            <!-- ── TWO-COLUMN SECTION: CHART + EXAMS ─────────────────────────
+                 Left column: Line chart showing task completion per day.
+                 Right column: Compact list of upcoming exams from localStorage. -->
+            <div class="two-col">
+
+                <!-- Progress Line Chart Card -->
+                <div class="card">
+                    <div class="card-header">
+                        <div class="card-title">
+                            <i class="fas fa-chart-line" style="color:var(--primary-blue);"></i> Study Progress (Tasks &amp; Topics)
+                        </div>
+                        <!-- Dropdown lets the user switch between week/month view -->
+                        <select id="timeframeFilter" onchange="renderChart()">
+                            <option value="week">This Week</option>
+                            <option value="month">This Month</option>
+                        </select>
+                    </div>
+                    <!-- Legend labels are rendered by JavaScript on one single line -->
+                    <div class="chart-legend" id="progressLegend"></div>
+                    <!-- Chart.js draws its line graph onto this <canvas> element (UI-03) -->
+                    <div class="chart-container">
+                        <canvas id="progressChart" role="img" aria-label="Line chart showing study progress across days: tasks planned target, tasks completed percentage, and current subject topic benchmark."></canvas>
+                    </div>
+                </div>
+
+                <!-- Upcoming Exams Mini-List Card -->
+                <div class="card">
+                    <div class="card-header">
+                        <div class="card-title">
+                            <i class="fas fa-calendar-check" style="color:var(--primary-purple);"></i> Upcoming Exams
+                        </div>
+                    </div>
+                    <!-- Filled by JavaScript (loadDashExams function) -->
+                    <div id="dashExamsList"></div>
+                </div>
+            </div>
+
+            <!-- ── FOUR METRIC CARDS ──────────────────────────────────────────
+                 Shows four key numbers read from localStorage:
+                 1. Today's completion % of tasks
+                 2. Tasks done / total tasks today
+                 3. Remaining (incomplete) tasks
+                 4. Total number of subjects added -->
+            <div class="metrics-grid">
+                <div class="metric-card">
+                    <p><i class="fas fa-bullseye" style="color:var(--primary-blue);"></i> Today's Progress</p>
+                    <h4 id="overallProgress">--%</h4>
+                    <small>tasks completed today</small>
+                </div>
+                <div class="metric-card">
+                    <p><i class="fas fa-check-circle" style="color:var(--accent-green);"></i> Tasks Done</p>
+                    <h4 id="tasksCompleted">0 / 0</h4>
+                    <small>today</small>
+                </div>
+                <div class="metric-card">
+                    <p><i class="fas fa-clock" style="color:var(--accent-orange);"></i> Remaining</p>
+                    <h4 id="remainingTasks">0</h4>
+                    <small>tasks left today</small>
+                </div>
+                <div class="metric-card">
+                    <p><i class="fas fa-book" style="color:var(--primary-purple);"></i> Subjects</p>
+                    <h4 id="subjectCount">0</h4>
+                    <small>added</small>
+                </div>
+            </div>
+
+        </div>
+    </div>
+
+    <!-- ============================================================
+         JAVASCRIPT
+         Reads data from localStorage to populate:
+         - Greeting (time-based: morning/afternoon/evening)
+         - Motivational quote (random from a list)
+         - Today's date display
+         - Four metric numbers
+         - Upcoming exams mini-list
+         - Line chart (task completion per day of the week)
+    ============================================================ -->
+    <script>
+        // A list of motivational quotes — one is chosen randomly each page load
+        const quotes = [
+            "Success is the sum of small efforts repeated every day.",
+            "Believe you can and you're halfway there.",
+            "The secret of getting ahead is getting started.",
+            "Don't stop until you're proud.",
+            "Your future is created by what you do today, not tomorrow.",
+            "Focus on progress, not perfection.",
+            "It always seems impossible until it's done.",
+            "Push yourself, because no one else is going to do it for you.",
+            "Great things never come from comfort zones.",
+            "Study hard, for the knowing is essential to a happier life."
+        ];
+
+        // Converts special characters to safe HTML entities (prevents XSS)
+        function escapeHTML(s) {
+            return String(s || '').replace(/[&<>"']/g, c =>
+                ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+        }
+
+        // Builds a storage key for today's tasks, e.g. "tasks_2026-07-30"
+        // This must match the key format used in index.html
+        function todayKey() {
+            const d = new Date();
+            return 'tasks_' + d.getFullYear() + '-' +
+                String(d.getMonth() + 1).padStart(2, '0') + '-' +
+                String(d.getDate()).padStart(2, '0');
+        }
+
+        // ── LOAD METRICS ─────────────────────────────────────────────────────
+        // Reads today's task list and subject list from localStorage,
+        // calculates completion stats, and updates the four metric cards.
+        function loadMetrics() {
+            const tasks = JSON.parse(localStorage.getItem(todayKey()) || '[]');
+            const done = tasks.filter(t => t.done).length; // How many tasks are ticked
+            const total = tasks.length;                     // Total tasks added today
+            const remaining = total - done;                     // Tasks still to do
+            // Percentage of tasks completed (0 if no tasks yet)
+            const pct = total > 0 ? Math.round((done / total) * 100) : 0;
+
+            document.getElementById('overallProgress').textContent = pct + '%';
+            document.getElementById('tasksCompleted').textContent = done + ' / ' + total;
+            document.getElementById('remainingTasks').textContent = remaining;
+
+            // Also read the subjects list to show how many subjects are added
+            const subjects = JSON.parse(localStorage.getItem('subjects') || '[]');
+            document.getElementById('subjectCount').textContent = subjects.length;
+        }
+
+        // ── LOAD UPCOMING EXAMS (mini-list) ──────────────────────────────────
+        // Reads the exams list, filters to only future/today exams,
+        // sorts by closest date, and shows up to 5 in the dashboard card.
+        function loadDashExams() {
+            const exams = JSON.parse(localStorage.getItem('exams') || '[]');
+            const el = document.getElementById('dashExamsList');
+
+            const today = new Date(); today.setHours(0, 0, 0, 0); // Midnight today for fair comparison
+
+            const upcoming = exams
+                .map(e => {
+                    const d = new Date(e.date + 'T00:00:00');
+                    return { ...e, examDate: d, daysLeft: Math.round((d - today) / 86400000) };
+                })
+                .filter(e => e.daysLeft >= 0)            // Ignore past exams
+                .sort((a, b) => a.daysLeft - b.daysLeft) // Nearest exam first
+                .slice(0, 5);                             // Show only the top 5
+
+            // If no exams found, show a friendly empty state
+            if (!upcoming.length) {
+                el.innerHTML = '<div class="empty-msg"><i class="fas fa-calendar-times"></i><br>No upcoming exams.</div>';
+                return;
+            }
+
+            // Build HTML for each exam row with color-coded urgency
+            el.innerHTML = upcoming.map(e => {
+                const dotCls = e.daysLeft <= 2 ? 'urgent' : e.daysLeft <= 7 ? 'soon' : 'later';
+                const bdgCls = e.daysLeft <= 2 ? 'days-urgent' : e.daysLeft <= 7 ? 'days-soon' : 'days-later';
+                const lbl = e.daysLeft === 0 ? 'Today!' : e.daysLeft === 1 ? 'Tomorrow' : e.daysLeft + ' days';
+                return `<div class="exam-row">
+                    <div class="exam-dot ${dotCls}"></div>
+                    <div class="exam-row-info">
+                        <div class="exam-row-name">${escapeHTML(e.name)}</div>
+                        <div class="exam-row-sub">${escapeHTML(e.subject)}</div>
+                    </div>
+                    <span class="exam-days-tag ${bdgCls}">${lbl}</span>
+                </div>`;
+            }).join('');
+        }
+
+        // ── RENDER PROGRESS CHART ─────────────────────────────────────────────
+        // Draws a line chart using Chart.js showing:
+        //   - Blue line: whether tasks were planned (100 if any tasks existed that day, else 0)
+        //   - Green line: actual % of tasks completed per day
+        //   - Purple line: % of subject topics completed (overall mastery, constant across the week)
+        // Looks back at the current week (Monday to Sunday).
+        let chart; // Keep a reference to destroy and recreate the chart on change
+
+        // Reads every subject out of localStorage and returns how many topics are
+        // marked done vs. how many exist in total, as a percentage.
+        function getSubjectTopicPercent() {
+            const subjects = JSON.parse(localStorage.getItem('subjects') || '[]');
+            let done = 0, total = 0;
+
+            subjects.forEach(s => {
+                (s.topics || []).forEach(t => {
+                    total++;
+                    if (t.done) done++;
+                });
+            });
+
+            return total > 0 ? Math.round(done / total * 100) : 0;
+        }
+
+        function renderChart() {
+            const timeframeEl = document.getElementById('timeframeFilter');
+            const timeframe = timeframeEl ? timeframeEl.value : 'week';
+
+            const today = new Date();
+            today.setHours(0, 0, 0, 0);
+
+            const labels = [];
+            const planned = [];
+            const actual = [];
+
+            if (timeframe === 'month') {
+                const year = today.getFullYear();
+                const month = today.getMonth();
+                const daysInMonth = new Date(year, month + 1, 0).getDate();
+                const monthName = today.toLocaleString('default', { month: 'short' });
+
+                for (let day = 1; day <= daysInMonth; day++) {
+                    const d = new Date(year, month, day);
+                    labels.push(day % 5 === 0 || day === 1 || day === daysInMonth ? `${monthName} ${day}` : `${day}`);
+                    const key = 'tasks_' + d.getFullYear() + '-' +
+                        String(d.getMonth() + 1).padStart(2, '0') + '-' +
+                        String(d.getDate()).padStart(2, '0');
+
+                    const isFuture = d > today;
+                    let dayTasks = [];
+                    try {
+                        dayTasks = JSON.parse(localStorage.getItem(key) || '[]');
+                    } catch (e) { dayTasks = []; }
+
+                    if (isFuture) {
+                        planned.push(dayTasks.length > 0 ? 100 : null);
+                        actual.push(dayTasks.length > 0 ? Math.round(dayTasks.filter(t => t.done).length / dayTasks.length * 100) : null);
+                    } else {
+                        planned.push(dayTasks.length > 0 ? 100 : 0);
+                        const done = dayTasks.filter(t => t.done).length;
+                        actual.push(dayTasks.length > 0 ? Math.round(done / dayTasks.length * 100) : 0);
+                    }
+                }
+            } else {
+                // Week view: Monday to Sunday
+                const dayOfWeek = today.getDay(); // 0=Sun, 1=Mon, ... 6=Sat
+                const monday = new Date(today);
+                monday.setDate(today.getDate() - ((dayOfWeek + 6) % 7));
+                monday.setHours(0, 0, 0, 0);
+
+                const dayNames = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+                for (let i = 0; i < 7; i++) {
+                    const d = new Date(monday);
+                    d.setDate(monday.getDate() + i);
+                    labels.push(dayNames[i]);
+
+                    const key = 'tasks_' + d.getFullYear() + '-' +
+                        String(d.getMonth() + 1).padStart(2, '0') + '-' +
+                        String(d.getDate()).padStart(2, '0');
+
+                    const isFuture = d > today;
+                    let dayTasks = [];
+                    try {
+                        dayTasks = JSON.parse(localStorage.getItem(key) || '[]');
+                    } catch (e) { dayTasks = []; }
+
+                    if (isFuture) {
+                        planned.push(dayTasks.length > 0 ? 100 : null);
+                        actual.push(dayTasks.length > 0 ? Math.round(dayTasks.filter(t => t.done).length / dayTasks.length * 100) : null);
+                    } else {
+                        planned.push(dayTasks.length > 0 ? 100 : 0);
+                        const done = dayTasks.filter(t => t.done).length;
+                        actual.push(dayTasks.length > 0 ? Math.round(done / dayTasks.length * 100) : 0);
+                    }
+                }
+            }
+
+            // Overall percentage of subject topics completed (current snapshot benchmark)
+            const topicPct = getSubjectTopicPercent();
+            const topicMastery = labels.map(() => topicPct);
+
+            // Destroy the old chart before creating a new one (avoids canvas conflicts)
+            if (chart) chart.destroy();
+            const ctx = document.getElementById('progressChart').getContext('2d');
+            chart = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels,
+                    datasets: [
+                        {
+                            label: 'Tasks Planned (Target 100%)',
+                            data: planned,
+                            borderColor: '#4338ca',
+                            backgroundColor: 'rgba(67,56,202,0.08)',
+                            tension: 0.3,
+                            pointRadius: timeframe === 'month' ? 2 : 4,
+                            fill: true,
+                            spanGaps: false
+                        },
+                        {
+                            label: 'Tasks Completed (%)',
+                            data: actual,
+                            borderColor: '#059669',
+                            backgroundColor: 'rgba(5,150,105,0.08)',
+                            tension: 0.3,
+                            pointRadius: timeframe === 'month' ? 2 : 4,
+                            fill: true,
+                            spanGaps: false
+                        },
+                        {
+                            label: `Current Topic Progress (${topicPct}%)`,
+                            data: topicMastery,
+                            borderColor: '#7c3aed',
+                            backgroundColor: 'rgba(124,58,237,0.08)',
+                            tension: 0.3,
+                            pointRadius: 0,
+                            borderDash: [6, 4],
+                            fill: false
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        // Chart.js' own legend is hidden — an HTML legend below the
+                        // title keeps the three labels together on one line.
+                        legend: { display: false }
+                    },
+                    scales: {
+                        x: { grid: { color: '#e2e8f0' }, ticks: { color: '#64748b' } },
+                        y: {
+                            grid: { color: '#e2e8f0' },
+                            ticks: { color: '#64748b' },
+                            min: 0,
+                            max: 100  // Y-axis is always 0–100 (percentage)
+                        }
+                    }
+                }
+            });
+
+            renderChartLegend();
+        }
+
+        // Builds the single-line HTML legend from the chart's datasets so the
+        // swatch colour/line style always matches what is drawn on the graph.
+        function renderChartLegend() {
+            const el = document.getElementById('progressLegend');
+            el.innerHTML = chart.data.datasets.map(d => {
+                const style = d.borderDash
+                    ? `background:repeating-linear-gradient(to right, ${d.borderColor} 0 5px, transparent 5px 9px);`
+                    : `background:${d.borderColor};`;
+                return `<span class="chart-legend-item">
+                            <span class="chart-legend-swatch" style="${style}"></span>${escapeHTML(d.label)}
+                        </span>`;
+            }).join('');
+        }
+
+        // ── PAGE INITIALIZATION ───────────────────────────────────────────────
+        // This runs once the page's HTML has fully loaded.
+        window.addEventListener('DOMContentLoaded', () => {
+
+            // Set the greeting based on the current hour of the day
+            const hour = new Date().getHours();
+            const g = hour < 12 ? 'Good Morning' : hour < 17 ? 'Good Afternoon' : 'Good Evening';
+            const uName = localStorage.getItem('userName') || '';
+            document.getElementById('greetingMessage').textContent = '👋 ' + g + (uName ? ', ' + uName : '') + '!';
+
+            // Pick a random motivational quote from the array and display it
+            document.getElementById('motivationalQuote').textContent =
+                '"' + quotes[Math.floor(Math.random() * quotes.length)] + '" ✨';
+
+            // Format today's date like "Wed, Jul 30, 2026" and display it
+            const opts = { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' };
+            document.getElementById('currentDate').innerHTML =
+                '<i class="far fa-calendar"></i> &nbsp;' + new Date().toLocaleDateString('en-US', opts);
+
+            // Load all the data-driven sections
+            loadMetrics();
+            loadDashExams();
+            renderChart();
+        });
+
+        // Refresh metric cards and exams list every 30 seconds automatically
+        // (picks up new tasks or exams added by the user in other panels)
+        setInterval(() => { loadMetrics(); loadDashExams(); }, 30000);
+
+        // Also refresh when another tab/page changes localStorage
+        // (e.g. if subs.html adds an exam, this page updates automatically)
+        window.addEventListener('storage', () => { loadMetrics(); loadDashExams(); renderChart(); });
+    </script>
+    <script>
+        document.addEventListener('click', () => {
+            if (window.parent && typeof window.parent.closeOverlays === 'function') {
+                window.parent.closeOverlays();
+            }
+        });
+    </script>
+</body>
+
+</html>

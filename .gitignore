@@ -1,0 +1,14 @@
+# Secrets and local environments
+.env
+*.local
+*.key
+*.pem
+
+# Dependencies & Build Artefacts
+node_modules/
+.vercel/
+
+# OS metadata
+.DS_Store
+Thumbs.db
+

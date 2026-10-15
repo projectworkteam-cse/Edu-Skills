@@ -1,0 +1,927 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+<!-- EDU-SKILL AI: per-user Firebase data isolation + cloud sync + AI helper -->
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
+<script src="js/env.js"></script>
+<script src="js/eduskill-sync.js"></script>
+
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>EDU-SKILL'S AI - AI Insights</title>
+
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css">
+
+    <style>
+        :root {
+            --bg-light: #f4f6f9;
+            --card-bg: #ffffff;
+            --card-border: #edf2f7;
+            --primary-blue: #4f46e5;
+            --primary-purple: #6366f1;
+            --accent-green: #16a34a;
+            --accent-green-bg: #f0fdf4;
+            --accent-orange: #d97706;
+            --accent-orange-bg: #fffbeb;
+            --red-bg: #fef2f2;
+            --red-text: #ef4444;
+            --text-main: #1e293b;
+            --text-sub: #64748b;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+        }
+
+        body {
+            background-color: var(--bg-light);
+            color: var(--text-main);
+            min-height: 100vh;
+        }
+
+        .page-body {
+            padding: 24px 28px;
+            max-width: 1100px;
+            margin: 0 auto;
+            width: 100%;
+        }
+
+        .page-title {
+            font-size: 20px;
+            font-weight: 700;
+            margin-bottom: 6px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .page-sub {
+            font-size: 13px;
+            color: var(--text-sub);
+            margin-bottom: 20px;
+        }
+
+        .card {
+            background-color: var(--card-bg);
+            border: 1px solid var(--card-border);
+            border-radius: 14px;
+            padding: 20px;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+            margin-bottom: 22px;
+        }
+
+        .card-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 12px;
+            flex-wrap: wrap;
+            margin-bottom: 8px;
+        }
+
+        .card-title {
+            font-size: 15px;
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .card-desc {
+            font-size: 12.5px;
+            color: var(--text-sub);
+            line-height: 1.55;
+            margin-bottom: 14px;
+        }
+
+        button.btn-primary {
+            background: linear-gradient(135deg, #4f46e5, #6366f1);
+            color: #ffffff;
+            border: none;
+            border-radius: 8px;
+            padding: 10px 18px;
+            font-weight: 600;
+            font-size: 13px;
+            cursor: pointer;
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            white-space: nowrap;
+            transition: opacity 0.2s, transform 0.1s;
+        }
+
+        button.btn-primary:hover:not(:disabled) {
+            opacity: 0.9;
+            transform: translateY(-1px);
+        }
+
+        button.btn-primary:disabled {
+            opacity: 0.55;
+            cursor: not-allowed;
+        }
+
+        .status-msg {
+            font-size: 12px;
+            margin-top: 12px;
+            min-height: 16px;
+        }
+
+        .status-msg.info { color: var(--text-sub); }
+        .status-msg.error { color: var(--red-text); }
+        .status-msg.ok { color: var(--accent-green); }
+
+        .summary-line {
+            font-size: 12.5px;
+            color: var(--text-main);
+            background: #f8fafc;
+            border: 1px solid var(--card-border);
+            border-radius: 10px;
+            padding: 10px 12px;
+            margin: 14px 0;
+        }
+
+        .empty-msg {
+            font-size: 13px;
+            color: var(--text-sub);
+            text-align: center;
+            padding: 18px 0;
+        }
+
+        /* ── WEAKNESS ITEMS ─────────────────────────────────────────────── */
+        .weak-list {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+            gap: 12px;
+        }
+
+        .weak-item {
+            display: flex;
+            flex-direction: column;
+            border: 1px solid var(--card-border);
+            border-left-width: 4px;
+            border-radius: 12px;
+            padding: 14px 16px;
+            background: #ffffff;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+        }
+
+        .weak-item.sev-high { border-left-color: var(--red-text); }
+        .weak-item.sev-medium { border-left-color: var(--accent-orange); }
+        .weak-item.sev-low { border-left-color: var(--accent-green); }
+
+        .weak-head {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            gap: 12px;
+        }
+
+        .weak-title { min-width: 0; }
+        .weak-title b { font-size: 13.5px; }
+        .weak-sub { font-size: 11px; color: var(--text-sub); margin-top: 3px; }
+
+        .sev-badge {
+            font-size: 10px;
+            font-weight: 700;
+            padding: 3px 9px;
+            border-radius: 10px;
+            flex-shrink: 0;
+            text-transform: uppercase;
+            letter-spacing: 0.4px;
+        }
+
+        .sev-badge.high { background: var(--red-bg); color: var(--red-text); }
+        .sev-badge.medium { background: var(--accent-orange-bg); color: var(--accent-orange); }
+        .sev-badge.low { background: var(--accent-green-bg); color: var(--accent-green); }
+
+        .weak-bar-row {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin: 11px 0 9px;
+        }
+
+        .weak-bar-bg {
+            flex: 1;
+            height: 7px;
+            background: #f1f5f9;
+            border-radius: 10px;
+            overflow: hidden;
+        }
+
+        .weak-bar-fill { height: 100%; border-radius: 10px; transition: width 0.5s ease; }
+        .sev-high .weak-bar-fill { background: linear-gradient(90deg, #f87171, #ef4444); }
+        .sev-medium .weak-bar-fill { background: linear-gradient(90deg, #fbbf24, #d97706); }
+        .sev-low .weak-bar-fill { background: linear-gradient(90deg, #4ade80, #16a34a); }
+
+        .weak-pct {
+            font-size: 12px;
+            font-weight: 700;
+            color: var(--text-sub);
+            min-width: 36px;
+            text-align: right;
+        }
+
+        .weak-factors {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 6px;
+            margin-bottom: 10px;
+        }
+
+        .weak-ai {
+            display: flex;
+            align-items: flex-start;
+            gap: 6px;
+            font-size: 12px;
+            color: var(--text-main);
+            background: #f8fafc;
+            border-radius: 8px;
+            padding: 8px 10px;
+            line-height: 1.5;
+            margin-top: auto;
+        }
+
+        .weak-ai i { color: var(--primary-purple); margin-top: 2px; }
+
+        /* ── READINESS ITEMS ────────────────────────────────────────────── */
+        .ready-list { display: flex; flex-direction: column; gap: 14px; }
+
+        .ready-item {
+            display: flex;
+            gap: 16px;
+            align-items: center;
+            border: 1px solid var(--card-border);
+            border-radius: 12px;
+            padding: 14px;
+        }
+
+        .ready-gauge {
+            position: relative;
+            width: 78px;
+            height: 78px;
+            border-radius: 50%;
+            flex-shrink: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .ready-gauge::before {
+            content: '';
+            position: absolute;
+            inset: 8px;
+            background: #ffffff;
+            border-radius: 50%;
+        }
+
+        .ready-gauge span {
+            position: relative;
+            font-size: 16px;
+            font-weight: 700;
+            color: var(--text-main);
+        }
+
+        .ready-body { flex: 1; min-width: 0; }
+        .ready-body b { font-size: 13.5px; }
+        .ready-sub { font-size: 11px; color: var(--text-sub); margin-top: 3px; }
+
+        .ready-factors {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 6px;
+            margin-top: 8px;
+        }
+
+        .factor-chip {
+            font-size: 10.5px;
+            background: #f1f5f9;
+            color: var(--text-sub);
+            padding: 3px 8px;
+            border-radius: 8px;
+        }
+
+        .verdict-tag {
+            display: inline-block;
+            font-size: 10.5px;
+            font-weight: 700;
+            padding: 3px 9px;
+            border-radius: 10px;
+            margin-top: 8px;
+            text-transform: uppercase;
+            letter-spacing: 0.3px;
+        }
+
+        .verdict-tag.ready { background: var(--accent-green-bg); color: var(--accent-green); }
+        .verdict-tag.ontrack { background: #eef2ff; color: var(--primary-blue); }
+        .verdict-tag.needs { background: var(--accent-orange-bg); color: var(--accent-orange); }
+        .verdict-tag.notready { background: var(--red-bg); color: var(--red-text); }
+
+        .ready-advice {
+            font-size: 12px;
+            color: var(--text-main);
+            line-height: 1.5;
+            margin-top: 8px;
+            background: #f8fafc;
+            border-radius: 8px;
+            padding: 8px 10px;
+        }
+
+        .ready-advice i { color: var(--primary-purple); margin-right: 6px; }
+
+        .hidden { display: none !important; }
+
+        @media (max-width: 640px) {
+            .page-body { padding: 16px; }
+            .card-header button.btn-primary {
+                width: 100%;
+                justify-content: center;
+            }
+            .ready-item { flex-direction: column; align-items: flex-start; }
+            .weak-list { grid-template-columns: 1fr; }
+        }
+
+        @media (max-width: 480px) {
+            .page-body { padding: 10px; }
+            .page-title { font-size: 18px; }
+            .page-sub { font-size: 12px; margin-bottom: 14px; }
+            .card { padding: 14px; border-radius: 12px; margin-bottom: 14px; }
+            .card-title { font-size: 14px; }
+            .ready-item { padding: 12px; gap: 12px; }
+            .ready-gauge { width: 64px; height: 64px; }
+            .ready-gauge span { font-size: 14px; }
+        }
+
+        @media (max-width: 340px) {
+            .page-body { padding: 8px; }
+            .card { padding: 10px; }
+            .page-title { font-size: 16px; }
+        }
+    </style>
+</head>
+
+<body>
+    <div class="page-body">
+
+        <div class="page-title">
+            <i class="fas fa-brain" style="color: var(--primary-purple);"></i>
+            <span>AI Learning Intelligence</span>
+        </div>
+        <p class="page-sub">Finds your weak topics from quiz scores, progress and deadlines, and predicts how ready you are for each exam.</p>
+
+        <!-- WEAKNESS DETECTOR -->
+        <section class="card">
+            <div class="card-header">
+                <div class="card-title">
+                    <i class="fas fa-triangle-exclamation" style="color: var(--accent-orange);"></i>
+                    <span>Weakness Detector</span>
+                </div>
+                <button class="btn-primary" type="button" id="detectBtn" onclick="detectWeaknesses()">
+                    <i class="fas fa-wand-magic-sparkles"></i> Detect Weak Areas
+                </button>
+            </div>
+            <p class="card-desc">
+                Combines your quiz history, topic completion, subject difficulty and exam deadlines to rank the
+                topics that need the most attention. Detected weaknesses are also sent to the Dashboard AI planner
+                so your daily tasks target them.
+            </p>
+            <div class="summary-line hidden" id="weakSummary"></div>
+            <div id="weakList"><p class="empty-msg">Click <b>Detect Weak Areas</b> to analyse your study data.</p></div>
+            <div class="status-msg info" id="weakStatus"></div>
+        </section>
+
+        <!-- EXAM READINESS PREDICTOR -->
+        <section class="card">
+            <div class="card-header">
+                <div class="card-title">
+                    <i class="fas fa-gauge-high" style="color: var(--primary-blue);"></i>
+                    <span>Exam Readiness Predictor</span>
+                </div>
+                <button class="btn-primary" type="button" id="predictBtn" onclick="predictReadiness()">
+                    <i class="fas fa-crystal-ball"></i> Predict Readiness
+                </button>
+            </div>
+            <p class="card-desc">
+                Estimated study preparedness based on your completed topics, quiz performance and days remaining before each exam.
+            </p>
+            <p style="font-size:11px;color:var(--text-sub);margin:-8px 0 14px;">
+                <i class="fas fa-circle-info"></i> Note: Readiness ratings are heuristic estimates designed to guide revision priorities, not certified exam outcome predictions.
+            </p>
+            <div id="readyList"><p class="empty-msg">Click <b>Predict Readiness</b> to forecast your exams.</p></div>
+            <div class="status-msg info" id="readyStatus"></div>
+        </section>
+
+    </div>
+
+    <script>
+        const SUBJECTS_KEY = 'subjects';
+        const EXAMS_KEY = 'exams';
+        const HISTORY_KEY = 'quizHistory';
+        const WEAK_KEY = 'weakTopics';
+        const READY_KEY = 'examReadiness';
+
+        function esc(s) {
+            return String(s || '').replace(/[&<>"']/g, c =>
+                ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+        }
+
+        function getJSON(key, fallback) {
+            try {
+                const v = JSON.parse(localStorage.getItem(key) || 'null');
+                return v === null || v === undefined ? fallback : v;
+            } catch (e) {
+                return fallback;
+            }
+        }
+
+        function todayKey() {
+            const d = new Date();
+            return 'tasks_' + d.getFullYear() + '-' +
+                String(d.getMonth() + 1).padStart(2, '0') + '-' +
+                String(d.getDate()).padStart(2, '0');
+        }
+
+        function startOfToday() {
+            const d = new Date();
+            d.setHours(0, 0, 0, 0);
+            return d;
+        }
+
+        function daysUntil(dateStr) {
+            if (!dateStr) return null;
+            const d = new Date(String(dateStr) + 'T00:00:00');
+            if (isNaN(d.getTime())) return null;
+            return Math.round((d - startOfToday()) / 86400000);
+        }
+
+        function setStatus(id, text, kind) {
+            const el = document.getElementById(id);
+            if (!el) return;
+            el.className = 'status-msg ' + (kind || 'info');
+            el.textContent = text || '';
+        }
+
+        function cap(s) {
+            s = String(s || '');
+            return s.charAt(0).toUpperCase() + s.slice(1);
+        }
+
+        // ── QUIZ STATS ──────────────────────────────────────────────────────
+        // Builds best-score / attempt stats keyed by "subject||topic".
+        function quizStats() {
+            const history = getJSON(HISTORY_KEY, []);
+            const map = {};
+            history.forEach(r => {
+                const subj = String(r.subject || '');
+                const topics = (Array.isArray(r.topics) && r.topics.length) ? r.topics : ['General'];
+                topics.forEach(t => {
+                    const k = subj + '||' + t;
+                    if (!map[k]) map[k] = { best: 0, attempts: 0, fails: 0 };
+                    map[k].attempts++;
+                    if (typeof r.pct === 'number' && r.pct > map[k].best) map[k].best = r.pct;
+                    if (!r.passed) map[k].fails++;
+                });
+            });
+            return map;
+        }
+
+        function nearestExamDays() {
+            const exams = getJSON(EXAMS_KEY, []);
+            const map = {};
+            exams.forEach(e => {
+                const dl = daysUntil(e.date);
+                if (dl === null || dl < 0) return;
+                const key = String(e.subject || '').toLowerCase();
+                if (map[key] === undefined || dl < map[key]) map[key] = dl;
+            });
+            return map;
+        }
+
+        // ── WEAKNESS SCORING ────────────────────────────────────────────────
+        // Rule-based study suggestion so every weak area always has guidance,
+        // even when the AI call is unavailable. The AI overwrites tip/action.
+        function buildSuggestion(t) {
+            const { done, best, attempts, diff } = t;
+            const dl = (t.dl === undefined ? null : t.dl);
+            let tip, action;
+
+            if (!attempts) {
+                tip = 'This topic has not been quizzed yet.';
+                action = 'Take a short quiz to find your baseline.';
+            } else if (best < 50) {
+                tip = `Your best quiz score is only ${best}%.`;
+                action = 'Re-read the notes for this topic, then retry the quiz to pass.';
+            } else if (best < 70) {
+                tip = `You score ${best}% but it is not secure yet.`;
+                action = 'Do one more practice round on the parts you keep missing.';
+            } else {
+                tip = `You score ${best}%, a good base to polish.`;
+                action = 'Skim the key points and re-quiz to lock it in.';
+            }
+
+            if (!done) {
+                tip += ' The topic is still marked incomplete.';
+                action += ' Finish the remaining material for this topic.';
+            }
+            if (String(diff) === 'hard') {
+                tip += ' It is rated Hard, so allow extra time.';
+            }
+            if (dl !== null) {
+                tip += (dl <= 0) ? ' The exam is today.' : ` The exam is in ${dl} day${dl > 1 ? 's' : ''}.`;
+                if (dl <= 7) action = 'Prioritise this now - ' + action.charAt(0).toLowerCase() + action.slice(1);
+            }
+            return { tip: tip.trim(), action: action.trim() };
+        }
+
+        function computeWeaknesses() {
+            const subjects = getJSON(SUBJECTS_KEY, []);
+            const quiz = quizStats();
+            const examDays = nearestExamDays();
+            const out = [];
+
+            subjects.forEach(s => {
+                const diff = String(s.difficulty || 'medium').toLowerCase();
+                const diffWeight = diff === 'hard' ? 1 : diff === 'medium' ? 0.7 : 0.45;
+                const dl = examDays[String(s.name || '').toLowerCase()];
+
+                (s.topics || []).forEach(t => {
+                    const topicName = t.topic || t.name || 'General';
+                    const q = quiz[(s.name || '') + '||' + topicName] || null;
+                    const done = !!t.done;
+
+                    // components (0..1), higher = weaker
+                    const perf = (q && q.attempts > 0) ? (1 - (q.best / 100)) : 0.55;
+                    const completion = done ? 0.15 : 1;
+                    const urgency = (dl !== undefined && dl !== null) ? Math.max(0, 1 - (dl / 30)) : 0.2;
+
+                    let score = (perf * 55 + completion * 25 + urgency * 20) * (0.7 + diffWeight * 0.5);
+                    score = Math.round(Math.max(0, Math.min(100, score)));
+                    const severity = score >= 65 ? 'High' : score >= 45 ? 'Medium' : 'Low';
+
+                    const bits = [];
+                    if (q && q.attempts > 0) bits.push(`best quiz ${q.best}% · ${q.attempts} attempt${q.attempts > 1 ? 's' : ''}`);
+                    else bits.push('quiz not attempted');
+                    if (!done) bits.push('topic not completed');
+                    bits.push(cap(diff) + ' difficulty');
+                    if (dl !== undefined && dl !== null) bits.push(dl === 0 ? 'exam today' : `exam in ${dl} day${dl > 1 ? 's' : ''}`);
+
+                    const sugg = buildSuggestion({
+                        done,
+                        best: q ? q.best : null,
+                        attempts: q ? q.attempts : 0,
+                        diff,
+                        dl: (dl === undefined ? null : dl)
+                    });
+
+                    out.push({
+                        subject: s.name || 'Subject',
+                        topic: topicName,
+                        score,
+                        severity,
+                        difficulty: diff,
+                        done,
+                        quizBest: q ? q.best : null,
+                        attempts: q ? q.attempts : 0,
+                        daysLeft: (dl === undefined ? null : dl),
+                        reason: bits.join(' · '),
+                        tip: sugg.tip,
+                        action: sugg.action
+                    });
+                });
+            });
+
+            out.sort((a, b) => b.score - a.score);
+            return out;
+        }
+
+        function severityClass(s) { return 'sev-' + String(s).toLowerCase(); }
+
+        function renderWeaknesses(list) {
+            const box = document.getElementById('weakList');
+            const summary = document.getElementById('weakSummary');
+
+            if (!list || !list.length) {
+                box.innerHTML = '<p class="empty-msg">No subjects/topics found. Add subjects with topics first.</p>';
+                summary.classList.add('hidden');
+                return;
+            }
+
+            const high = list.filter(w => w.severity === 'High').length;
+            const med = list.filter(w => w.severity === 'Medium').length;
+            summary.classList.remove('hidden');
+            summary.innerHTML = `<b>${list.length}</b> topics analysed &middot; ` +
+                `<span style="color:var(--red-text);font-weight:600;">${high} high</span> &middot; ` +
+                `<span style="color:var(--accent-orange);font-weight:600;">${med} medium</span> priority areas.`;
+
+            box.innerHTML = '<div class="weak-list">' + list.slice(0, 12).map(w => {
+                const tip = w.tip || w.why || '';
+                const chips = String(w.reason || '').split(' · ').filter(Boolean)
+                    .map(c => `<span class="factor-chip">${esc(c)}</span>`).join('');
+                return `<div class="weak-item ${severityClass(w.severity)}">
+                    <div class="weak-head">
+                        <div class="weak-title">
+                            <b>${esc(w.topic)}</b>
+                            <div class="weak-sub">${esc(w.subject)}</div>
+                        </div>
+                        <span class="sev-badge ${String(w.severity).toLowerCase()}">${esc(w.severity)}</span>
+                    </div>
+                    <div class="weak-bar-row">
+                        <div class="weak-bar-bg"><div class="weak-bar-fill" style="width:${w.score}%;"></div></div>
+                        <span class="weak-pct">${w.score}%</span>
+                    </div>
+                    ${chips ? `<div class="weak-factors">${chips}</div>` : ''}
+                    ${tip ? `<div class="weak-ai"><i class="fas fa-lightbulb"></i><span>${esc(tip)}${w.action ? ' <b>Next step:</b> ' + esc(w.action) : ''}</span></div>` : ''}
+                </div>`;
+            }).join('') + '</div>';
+        }
+
+        // ── AI: weakness recommendations ────────────────────────────────────
+        function parseJSONLoose(raw, arrayKey) {
+            let text = String(raw || '').replace(/```json/gi, '').replace(/```/g, '').trim();
+            try {
+                const obj = JSON.parse(text);
+                if (Array.isArray(obj)) return obj;
+                if (arrayKey && Array.isArray(obj[arrayKey])) return obj[arrayKey];
+            } catch (e) {}
+            const m = text.match(/\[[\s\S]*\]/);
+            if (m) {
+                try { return JSON.parse(m[0]); } catch (e) {}
+            }
+            return [];
+        }
+
+        async function detectWeaknesses() {
+            const btn = document.getElementById('detectBtn');
+            const list = computeWeaknesses();
+
+            if (!list.length) {
+                renderWeaknesses(list);
+                setStatus('weakStatus', 'Add subjects with topics to detect weaknesses.', 'error');
+                return;
+            }
+
+            renderWeaknesses(list);
+            setStatus('weakStatus', 'Analyzing with AI...', 'info');
+
+            btn.disabled = true;
+            btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Detecting...';
+
+            const top = list.slice(0, 8);
+
+            try {
+                const payload = top.map(w =>
+                    `- ${w.subject} / ${w.topic} | weakness ${w.score}% (${w.severity}) | ${w.reason}`
+                ).join('\n');
+
+                const prompt = `You are an expert academic study coach.
+A student has these weak topics detected from quiz scores, topic completion and exam deadlines:
+${payload}
+
+For EACH topic above give concise, specific guidance.
+Return ONLY valid JSON (no markdown) in this exact shape:
+{"recommendations":[{"subject":"...","topic":"...","why":"one short sentence explaining the weakness","action":"one concrete action the student should take next"}]}`;
+
+                const data = await window.eduskillGroqFetch({
+                    model: 'openai/gpt-oss-120b',
+                    messages: [
+                        { role: 'system', content: 'Return only valid JSON.' },
+                        { role: 'user', content: prompt }
+                    ],
+                    temperature: 0.5
+                });
+
+                const raw = data.choices?.[0]?.message?.content || '[]';
+                const recs = parseJSONLoose(raw, 'recommendations');
+
+                const byKey = {};
+                recs.forEach(r => { byKey[(r.subject || '') + '||' + (r.topic || '')] = r; });
+
+                list.forEach(w => {
+                    const r = byKey[w.subject + '||' + w.topic];
+                    if (r) {
+                        if (r.why) w.tip = r.why;
+                        if (r.action) w.action = r.action;
+                    }
+                });
+
+                setStatus('weakStatus', 'Weakness analysis complete.', 'ok');
+            } catch (err) {
+                console.warn('Weakness AI failed:', err.message);
+                setStatus('weakStatus', 'AI tips unavailable (offline or quota). Showing built-in study suggestions.', 'error');
+            } finally {
+                btn.disabled = false;
+                btn.innerHTML = '<i class="fas fa-wand-magic-sparkles"></i> Detect Weak Areas';
+            }
+
+            renderWeaknesses(list);
+            localStorage.setItem(WEAK_KEY, JSON.stringify(list.slice(0, 12)));
+        }
+
+        // ── EXAM READINESS ──────────────────────────────────────────────────
+        function computeReadiness() {
+            const subjects = getJSON(SUBJECTS_KEY, []);
+            const exams = getJSON(EXAMS_KEY, []);
+            const history = getJSON(HISTORY_KEY, []);
+            const todayTasks = getJSON(todayKey(), []);
+            const taskPct = todayTasks.length
+                ? Math.round(todayTasks.filter(t => t.done).length / todayTasks.length * 100)
+                : 0;
+
+            const upcoming = exams
+                .map(e => ({ e, dl: daysUntil(e.date) }))
+                .filter(x => x.dl !== null && x.dl >= 0)
+                .sort((a, b) => a.dl - b.dl);
+
+            return upcoming.map(({ e, dl }) => {
+                const subjName = String(e.subject || '');
+                const subj = subjects.find(s => String(s.name || '').toLowerCase() === subjName.toLowerCase());
+                const topics = subj ? (subj.topics || []) : [];
+                const doneCount = topics.filter(t => t.done).length;
+                const topicPct = topics.length ? Math.round(doneCount / topics.length * 100) : 0;
+
+                // average best quiz pct across this subject's topics
+                const rel = history.filter(r => String(r.subject || '').toLowerCase() === subjName.toLowerCase());
+                let quizPct = null;
+                if (rel.length) {
+                    const bestByTopic = {};
+                    rel.forEach(r => {
+                        (r.topics && r.topics.length ? r.topics : ['General']).forEach(t => {
+                            if (bestByTopic[t] === undefined || r.pct > bestByTopic[t]) bestByTopic[t] = r.pct;
+                        });
+                    });
+                    const vals = Object.values(bestByTopic);
+                    quizPct = Math.round(vals.reduce((a, b) => a + b, 0) / vals.length);
+                }
+
+                let readiness, verdict, vClass, color;
+                const hasEvidence = topics.length > 0 || quizPct !== null;
+
+                if (!hasEvidence) {
+                    readiness = null;
+                    verdict = 'Insufficient data';
+                    vClass = 'needs';
+                    color = '#94a3b8';
+                } else {
+                    const quizComponent = quizPct !== null ? quizPct : topicPct * 0.6;
+                    readiness = topicPct * 0.6 + quizComponent * 0.4;
+
+                    // time-pressure: if the exam is very close, lack of mastery hurts more
+                    if (dl <= 3 && readiness < 70) readiness -= 12;
+                    else if (dl <= 7 && readiness < 50) readiness -= 8;
+                    else if (dl >= 21 && readiness >= 60) readiness += 5;
+
+                    readiness = Math.round(Math.max(0, Math.min(100, readiness)));
+
+                    if (readiness >= 80) { verdict = 'Ready'; vClass = 'ready'; }
+                    else if (readiness >= 60) { verdict = 'On track'; vClass = 'ontrack'; }
+                    else if (readiness >= 40) { verdict = 'Needs work'; vClass = 'needs'; }
+                    else { verdict = 'Not ready'; vClass = 'notready'; }
+
+                    color = readiness >= 80 ? '#16a34a' : readiness >= 60 ? '#4f46e5' : readiness >= 40 ? '#d97706' : '#ef4444';
+                }
+
+                return {
+                    exam: e.name || 'Exam',
+                    subject: subjName || 'Subject',
+                    date: e.date || '',
+                    daysLeft: dl,
+                    readiness,
+                    verdict,
+                    vClass,
+                    color,
+                    topicPct,
+                    quizPct,
+                    taskPct,
+                    topicsDone: doneCount,
+                    topicsTotal: topics.length
+                };
+            });
+        }
+
+        function renderReadiness(list) {
+            const box = document.getElementById('readyList');
+            if (!list || !list.length) {
+                box.innerHTML = '<p class="empty-msg">No upcoming exams found. Add exams in the Subjects &amp; Exams page.</p>';
+                return;
+            }
+
+            box.innerHTML = '<div class="ready-list">' + list.map(r => {
+                const days = r.daysLeft === 0 ? 'Today' : r.daysLeft === 1 ? 'Tomorrow' : `in ${r.daysLeft} days`;
+                const quizTxt = r.quizPct === null ? 'no quiz data' : `quiz ${r.quizPct}%`;
+                const advice = r.advice ? `<div class="ready-advice"><i class="fas fa-robot"></i>${esc(r.advice)}</div>` : '';
+                const gaugeBg = r.readiness !== null
+                    ? `background: conic-gradient(${r.color} ${r.readiness}%, #e2e8f0 0);`
+                    : 'background: #f1f5f9; color: #94a3b8;';
+                const gaugeText = r.readiness !== null ? `${r.readiness}%` : '—';
+                const factorTopic = r.topicsTotal > 0
+                    ? `<span class="factor-chip"><i class="fas fa-list-check"></i> ${r.topicsDone}/${r.topicsTotal} topics</span>`
+                    : '<span class="factor-chip"><i class="fas fa-list-check"></i> No topics listed</span>';
+
+                return `<div class="ready-item">
+                    <div class="ready-gauge" style="${gaugeBg}">
+                        <span>${gaugeText}</span>
+                    </div>
+                    <div class="ready-body">
+                        <b>${esc(r.exam)}</b>
+                        <div class="ready-sub">${esc(r.subject)} &middot; ${esc(r.date)} &middot; ${days}</div>
+                        <div class="ready-factors">
+                            ${factorTopic}
+                            <span class="factor-chip"><i class="fas fa-circle-question"></i> ${quizTxt}</span>
+                        </div>
+                        <span class="verdict-tag ${r.vClass}">${esc(r.verdict)}</span>
+                        ${advice}
+                    </div>
+                </div>`;
+            }).join('') + '</div>';
+        }
+
+        // ── AI: exam readiness advice ───────────────────────────────────────
+        async function predictReadiness() {
+            const btn = document.getElementById('predictBtn');
+            const list = computeReadiness();
+
+            if (!list.length) {
+                renderReadiness(list);
+                setStatus('readyStatus', 'Add upcoming exams to predict readiness.', 'error');
+                return;
+            }
+
+            renderReadiness(list);
+            setStatus('readyStatus', 'Predicting with AI...', 'info');
+
+            btn.disabled = true;
+            btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Predicting...';
+
+            try {
+                const payload = list.map(r =>
+                    `- ${r.exam} (${r.subject}) | date ${r.date} | ${r.daysLeft} day(s) left | readiness ${r.readiness}% | topics ${r.topicsDone}/${r.topicsTotal} done | quiz ${r.quizPct === null ? 'n/a' : r.quizPct + '%'} | verdict ${r.verdict}`
+                ).join('\n');
+
+                const prompt = `You are an exam readiness analyst.
+For each upcoming exam below, give a short verdict and specific, motivating advice.
+${payload}
+
+Return ONLY valid JSON (no markdown) in this exact shape:
+{"predictions":[{"exam":"...","verdict":"...","advice":"one or two short sentences with the most impactful next step"}]}`;
+
+                const data = await window.eduskillGroqFetch({
+                    model: 'openai/gpt-oss-120b',
+                    messages: [
+                        { role: 'system', content: 'Return only valid JSON.' },
+                        { role: 'user', content: prompt }
+                    ],
+                    temperature: 0.5
+                });
+
+                const raw = data.choices?.[0]?.message?.content || '[]';
+                const preds = parseJSONLoose(raw, 'predictions');
+
+                const byExam = {};
+                preds.forEach(p => { byExam[String(p.exam || '')] = p; });
+
+                list.forEach(r => {
+                    const p = byExam[r.exam];
+                    if (p) r.advice = p.advice || '';
+                });
+
+                setStatus('readyStatus', 'Readiness prediction complete.', 'ok');
+            } catch (err) {
+                console.warn('Readiness AI failed:', err.message);
+                setStatus('readyStatus', 'AI advice unavailable (offline or quota). Showing local prediction.', 'error');
+            } finally {
+                btn.disabled = false;
+                btn.innerHTML = '<i class="fas fa-crystal-ball"></i> Predict Readiness';
+            }
+
+            renderReadiness(list);
+            localStorage.setItem(READY_KEY, JSON.stringify(list));
+        }
+
+        // ── INIT ────────────────────────────────────────────────────────────
+        function renderFromStorage() {
+            const weak = getJSON(WEAK_KEY, []);
+            if (weak.length) renderWeaknesses(weak);
+            const ready = getJSON(READY_KEY, []);
+            if (ready.length) renderReadiness(ready);
+        }
+
+        window.addEventListener('DOMContentLoaded', renderFromStorage);
+        window.addEventListener('storage', renderFromStorage);
+        window.addEventListener('eduskill-cloud-ready', renderFromStorage);
+    </script>
+    <script>
+        document.addEventListener('click', () => {
+            if (window.parent && typeof window.parent.closeOverlays === 'function') {
+                window.parent.closeOverlays();
+            }
+        });
+    </script>
+</body>
+
+</html>

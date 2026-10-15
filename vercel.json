@@ -1,0 +1,17 @@
+{
+  "version": 2,
+  "routes": [
+    {
+      "src": "^/\\.env",
+      "status": 404
+    },
+    {
+      "src": "/api/groq",
+      "dest": "/api/groq.js"
+    },
+    {
+      "src": "/api/send-email",
+      "dest": "/api/send-email.js"
+    }
+  ]
+}

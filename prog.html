@@ -1,0 +1,450 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<!-- EDU-SKILL AI: per-user Firebase data isolation + cloud sync -->
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
+<script src="js/env.js"></script>
+<script src="js/eduskill-sync.js"></script>
+
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>EDU-SKILL'S AI - Progress Tracker</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.2/dist/chart.umd.min.js"></script>
+    <style>
+        :root {
+            --bg-dark: #f8fafc;
+            --card-bg: #ffffff;
+            --card-border: #e2e8f0;
+            --primary-blue: #4338ca;
+            --primary-purple: #6d28d9;
+            --accent-green: #059669;
+            --accent-orange: #d97706;
+            --text-main: #0f172a;
+            --text-sub: #64748b;
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
+
+        body { background-color: var(--bg-dark); color: var(--text-main); }
+
+        .main-wrapper { display: flex; flex-direction: column; overflow-y: auto; min-height: 100vh; }
+
+        .page-body { padding: 24px 28px; max-width: 1200px; margin: 0 auto; width: 100%; }
+
+        .page-title { font-size: 20px; font-weight: 700; margin-bottom: 20px; display: flex; align-items: center; gap: 10px; }
+
+        .metrics-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px; margin-bottom: 22px; }
+
+        .metric-card { background: var(--card-bg); border: 1px solid var(--card-border); border-radius: 14px; padding: 18px; box-shadow: 0 1px 3px rgba(0,0,0,0.05); }
+        .metric-card p { font-size: 12px; color: var(--text-sub); display: flex; align-items: center; gap: 6px; }
+        .metric-card h3 { font-size: 24px; font-weight: 700; margin: 8px 0 4px; color: var(--text-main); }
+        .metric-card span { font-size: 11px; color: var(--accent-green); font-weight: 600; }
+
+        .section-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 22px; }
+
+        .card { background-color: var(--card-bg); border: 1px solid var(--card-border); border-radius: 14px; padding: 20px; box-shadow: 0 1px 3px rgba(0,0,0,0.05); margin-bottom: 22px; }
+
+        .card-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; }
+
+        .card-title { font-size: 14px; font-weight: 600; display: flex; align-items: center; gap: 8px; }
+
+        /* Subject Mastery Progress Bars */
+        .subject-progress-list { display: flex; flex-direction: column; gap: 16px; }
+
+        .subject-item-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 5px; }
+        .subject-item-name { font-size: 13px; font-weight: 600; color: var(--text-main); }
+        .subject-item-pct { font-size: 12px; color: var(--text-sub); }
+
+        .progress-bar-bg { height: 8px; background-color: #f1f5f9; border-radius: 10px; overflow: hidden; }
+        .progress-bar-fill { height: 100%; border-radius: 10px; transition: width 0.5s ease; }
+
+        /* Badges */
+        .badge-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px; }
+
+        .badge-item { background: #f8fafc; border: 1px solid var(--card-border); border-radius: 12px; padding: 12px; display: flex; align-items: center; gap: 10px; }
+        .badge-icon { width: 40px; height: 40px; border-radius: 50%; background: #eef2ff; color: var(--primary-blue); display: flex; align-items: center; justify-content: center; font-size: 17px; flex-shrink: 0; }
+        .badge-info h5 { font-size: 12px; font-weight: 600; color: var(--text-main); }
+        .badge-info p { font-size: 10px; color: var(--text-sub); margin-top: 2px; }
+        .badge-item.locked { opacity: 0.45; }
+
+        .empty-msg { font-size: 12px; color: var(--text-sub); text-align: center; padding: 16px 0; }
+
+        @media (max-width: 1024px) {
+            .page-body { padding: 18px 20px; }
+            .metrics-grid { grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); }
+        }
+
+        @media (max-width: 768px) {
+            .page-body { padding: 16px; }
+            .section-grid { grid-template-columns: 1fr; gap: 16px; }
+        }
+
+        @media (max-width: 640px) {
+            .page-body { padding: 14px; }
+            .page-title { font-size: 18px; }
+            .section-grid { grid-template-columns: 1fr; gap: 14px; }
+        }
+
+        @media (max-width: 480px) {
+            .page-body { padding: 10px; }
+            .card { padding: 14px; border-radius: 12px; margin-bottom: 14px; }
+            .card-header { flex-wrap: wrap; gap: 8px; }
+            .page-title { font-size: 17px; }
+            .metrics-grid {
+                grid-template-columns: repeat(2, 1fr);
+                gap: 10px;
+                margin-bottom: 16px;
+            }
+            .metric-card {
+                padding: 12px 10px;
+            }
+            .metric-card h3 {
+                font-size: 20px;
+            }
+            .badge-grid {
+                grid-template-columns: 1fr;
+                gap: 8px;
+            }
+        }
+
+        @media (max-width: 340px) {
+            .page-body { padding: 8px; }
+            .card { padding: 10px; }
+            .metrics-grid {
+                grid-template-columns: 1fr;
+            }
+            .page-title { font-size: 15px; }
+        }
+    </style>
+</head>
+<body>
+    <div class="main-wrapper">
+        <div class="page-body">
+            <div class="page-title">
+                <i class="fas fa-chart-line" style="color: var(--primary-blue);"></i>
+                <span>Your Study Performance &amp; Metrics</span>
+            </div>
+
+            <div class="metrics-grid">
+                <div class="metric-card">
+                    <p><i class="fas fa-clock" style="color:var(--primary-blue);"></i> Tasks Today</p>
+                    <h3 id="metricTotalHours">0</h3>
+                    <span id="metricHoursSub">tasks added</span>
+                </div>
+                <div class="metric-card">
+                    <p><i class="fas fa-check-double" style="color:var(--accent-green);"></i> Tasks Completed</p>
+                    <h3 id="metricTasks">0</h3>
+                    <span id="metricTasksSub">today</span>
+                </div>
+                <div class="metric-card">
+                    <p><i class="fas fa-fire" style="color:#db2777;"></i> Subjects Added</p>
+                    <h3 id="metricStreak">0</h3>
+                    <span id="metricStreakSub">subjects</span>
+                </div>
+                <div class="metric-card">
+                    <p><i class="fas fa-bullseye" style="color:var(--accent-orange);"></i> Today's Completion</p>
+                    <h3 id="metricAccuracy">0%</h3>
+                    <span id="metricAccuracySub">of today's tasks done</span>
+                </div>
+            </div>
+
+            <div class="section-grid">
+                <div>
+                    <div class="card">
+                        <div class="card-header">
+                            <div class="card-title">
+                                <i class="fas fa-hourglass-half" style="color:var(--primary-purple);"></i>
+                                <span>Weekly Task Completion</span>
+                            </div>
+                        </div>
+                        <div style="height: 220px;">
+                            <canvas id="weeklyHoursChart" role="img" aria-label="Bar chart showing weekly task completion percentage by day"></canvas>
+                        </div>
+                    </div>
+
+                    <div class="card">
+                        <div class="card-header">
+                            <div class="card-title">
+                                <i class="fas fa-list-check" style="color:var(--primary-purple);"></i>
+                                <span>Subject Topic Completion</span>
+                            </div>
+                        </div>
+                        <div style="height: 260px;">
+                            <canvas id="subjectTopicChart" role="img" aria-label="Horizontal bar chart showing percentage of topics completed per subject"></canvas>
+                        </div>
+                        <div id="subjectChartEmpty" class="empty-msg" style="display: none;">
+                            Add subjects with topics in the Subjects &amp; Exams page to see topic completion.
+                        </div>
+                    </div>
+                </div>
+
+                <div>
+                    <div class="card">
+                        <div class="card-header">
+                            <div class="card-title">
+                                <i class="fas fa-award" style="color:var(--accent-orange);"></i>
+                                <span>Milestones &amp; Badges</span>
+                            </div>
+                        </div>
+                        <div class="badge-grid" id="badgeGrid"></div>
+                    </div>
+
+                    <div class="card" style="background: linear-gradient(135deg, #eef2ff, #f3e8ff); border: 1px solid #c7d2fe;">
+                        <div class="card-title" style="color: var(--primary-blue); margin-bottom: 10px;">
+                            <i class="fas fa-robot"></i>
+                            <span>AI Progress Insight</span>
+                        </div>
+                        <p id="aiProgressInsightText" style="font-size: 13px; color: var(--text-main); line-height: 1.6;">
+                            Loading insight...
+                        </p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // ── Today key ─────────────────────────────────────────────────────────
+        function todayKey() {
+            const d = new Date();
+            return 'tasks_' + d.getFullYear() + '-' +
+                String(d.getMonth()+1).padStart(2,'0') + '-' +
+                String(d.getDate()).padStart(2,'0');
+        }
+
+        function escapeHTML(s) {
+            return String(s||'').replace(/[&<>"']/g, c =>
+                ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+        }
+
+        const COLORS = ['#4338ca','#6d28d9','#059669','#d97706','#db2777','#0891b2','#7c3aed','#16a34a'];
+
+        // -- Load Metrics ------------------------------------------------------
+        function loadMetrics() {
+            const tasks = JSON.parse(localStorage.getItem(todayKey()) || '[]');
+            const done = tasks.filter(t => t.done).length;
+            const total = tasks.length;
+            const pct = total > 0 ? Math.round(done / total * 100) : 0;
+
+            document.getElementById('metricTotalHours').textContent = total;
+            document.getElementById('metricTasks').textContent      = done;
+            document.getElementById('metricStreak').textContent     = JSON.parse(localStorage.getItem('subjects') || '[]').length;
+            document.getElementById('metricAccuracy').textContent   = pct + '%';
+        }
+
+        // ── Subject Progress ──────────────────────────────────────────────────
+        // The topic chart is drawn by renderSubjectChart(); this only shows or
+        // hides the "no subjects yet" message underneath it.
+        function loadSubjectProgress() {
+            const subjects = JSON.parse(localStorage.getItem('subjects') || '[]');
+            const canvas   = document.getElementById('subjectTopicChart');
+            const empty    = document.getElementById('subjectChartEmpty');
+
+            const hasTopics = subjects.some(s => (s.topics || []).length > 0);
+
+            if (canvas) canvas.parentElement.style.display = hasTopics ? '' : 'none';
+            if (empty)  empty.style.display = hasTopics ? 'none' : '';
+        }
+
+        // ── Badges ────────────────────────────────────────────────────────────
+        function loadBadges() {
+            const subjects = JSON.parse(localStorage.getItem('subjects') || '[]');
+            const exams    = JSON.parse(localStorage.getItem('exams') || '[]');
+            // Lifetime total of completed tasks (survives page reloads)
+            const done     = parseInt(localStorage.getItem('tasksCompletedTotal') || '0', 10) || 0;
+
+            const allBadges = [
+                { icon: 'fa-book', label: 'First Subject', desc: 'Added your first subject', earned: subjects.length >= 1 },
+                { icon: 'fa-layer-group', label: 'Collector', desc: 'Added 3+ subjects', earned: subjects.length >= 3 },
+                { icon: 'fa-calendar-check', label: 'Exam Ready', desc: 'Added first exam', earned: exams.length >= 1 },
+                { icon: 'fa-check-circle', label: 'Task Master', desc: 'Completed your first task', earned: done >= 1 },
+                { icon: 'fa-fire', label: 'On Fire!', desc: 'Completed 5+ tasks in total', earned: done >= 5 },
+                { icon: 'fa-graduation-cap', label: 'Scholar', desc: 'Added 5+ subjects', earned: subjects.length >= 5 },
+            ];
+
+            const el = document.getElementById('badgeGrid');
+            el.innerHTML = allBadges.map(b => `
+                <div class="badge-item ${b.earned ? '' : 'locked'}">
+                    <div class="badge-icon"><i class="fas ${b.icon}"></i></div>
+                    <div class="badge-info">
+                        <h5>${b.label} ${b.earned ? '✅' : '🔒'}</h5>
+                        <p>${b.desc}</p>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        // ── AI Insight (local, no API needed) ─────────────────────────────────
+        function loadInsight() {
+            const subjects = JSON.parse(localStorage.getItem('subjects') || '[]');
+            const tasks    = JSON.parse(localStorage.getItem(todayKey()) || '[]');
+            const done     = tasks.filter(t => t.done).length;
+            const pct      = tasks.length > 0 ? Math.round(done / tasks.length * 100) : 0;
+
+            let insight = '';
+            if (subjects.length === 0) {
+                insight = '📚 You haven\'t added any subjects yet. Head to the "Subjects & Exams" page to add subjects and get started with your study plan!';
+            } else if (tasks.length === 0) {
+                insight = '📋 You haven\'t added any tasks for today yet. Use the "Today\'s Tasks" panel on the right to plan your day!';
+            } else if (pct === 100) {
+                insight = '🎉 Amazing! You completed ALL tasks for today. That\'s outstanding dedication! Take a short break and prepare for tomorrow\'s goals.';
+            } else if (pct >= 70) {
+                insight = `✅ Great progress! You've completed ${pct}% of today's tasks. Keep it up — you're almost there. Stay focused and finish strong!`;
+            } else if (pct >= 30) {
+                insight = `📈 You're at ${pct}% completion today. Stay on track! Try the Pomodoro technique — 25 minutes focus, 5 minutes break — to boost productivity.`;
+            } else {
+                insight = `🚀 You've completed ${pct}% of today's tasks. Every journey starts with one step! Focus on one task at a time and build momentum.`;
+            }
+
+            document.getElementById('aiProgressInsightText').textContent = insight;
+        }
+
+        // ── Weekly Chart ──────────────────────────────────────────────────────
+        let chart;
+
+        function renderWeeklyChart() {
+            const labels = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
+            const today = new Date();
+            const dow = today.getDay();
+            const monday = new Date(today);
+            monday.setDate(today.getDate() - ((dow + 6) % 7));
+            monday.setHours(0,0,0,0);
+
+            const data = [];
+            for (let i = 0; i < 7; i++) {
+                const d = new Date(monday);
+                d.setDate(monday.getDate() + i);
+                const key = 'tasks_' + d.getFullYear() + '-' +
+                    String(d.getMonth()+1).padStart(2,'0') + '-' +
+                    String(d.getDate()).padStart(2,'0');
+                const dayTasks = JSON.parse(localStorage.getItem(key) || '[]');
+                const doneCnt = dayTasks.filter(t => t.done).length;
+                data.push(doneCnt);
+            }
+
+            if (chart) chart.destroy();
+            const ctx = document.getElementById('weeklyHoursChart').getContext('2d');
+            chart = new Chart(ctx, {
+                type: 'bar',
+                data: {
+                    labels,
+                    datasets: [{
+                        label: 'Tasks Completed',
+                        data,
+                        backgroundColor: '#4338ca',
+                        borderRadius: 6
+                    }]
+                },
+                options: {
+                    responsive: true, maintainAspectRatio: false,
+                    plugins: { legend: { display: false } },
+                    scales: {
+                        x: { grid: { display: false }, ticks: { color: '#64748b' } },
+                        y: { grid: { color: '#e2e8f0' }, beginAtZero: true, ticks: { color: '#64748b', stepSize: 1 } }
+                    }
+                }
+            });
+        }
+
+        // ── Subject Topic Chart ───────────────────────────────────────────────
+        // Horizontal stacked bar chart: one bar per subject, split into
+        // "Completed" (purple) and "Remaining" (grey) topic counts.
+        let subjectChart;
+        function renderSubjectChart() {
+            const subjects = JSON.parse(localStorage.getItem('subjects') || '[]');
+            const canvas   = document.getElementById('subjectTopicChart');
+
+            if (!canvas) return;
+
+            // Keep the bar rows comfortably tall without overflowing on many subjects
+            canvas.parentElement.style.height = Math.max(200, subjects.length * 46 + 40) + 'px';
+
+            const done = [], remaining = [], names = [];
+            subjects.forEach(s => {
+                const topics = s.topics || [];
+                const d = topics.filter(t => t.done).length;
+                names.push(s.name);
+                done.push(d);
+                remaining.push(topics.length - d);
+            });
+
+            if (subjectChart) subjectChart.destroy();
+            subjectChart = new Chart(canvas.getContext('2d'), {
+                type: 'bar',
+                data: {
+                    labels: names,
+                    datasets: [
+                        {
+                            label: 'Completed Topics',
+                            data: done,
+                            backgroundColor: '#7c3aed',
+                            borderRadius: 6,
+                            barThickness: 20
+                        },
+                        {
+                            label: 'Remaining Topics',
+                            data: remaining,
+                            backgroundColor: '#e2e8f0',
+                            borderRadius: 6,
+                            barThickness: 20
+                        }
+                    ]
+                },
+                options: {
+                    indexAxis: 'y',
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: { labels: { color: '#64748b', font: { size: 12 }, boxWidth: 12 } },
+                        tooltip: {
+                            callbacks: {
+                                afterBody: (items) => {
+                                    const d = items[0].dataset.data[items[0].dataIndex];
+                                    const r = remaining[items[0].dataIndex];
+                                    const t = d + r;
+                                    return t > 0 ? Math.round(d / t * 100) + '% of topics done' : 'No topics yet';
+                                }
+                            }
+                        }
+                    },
+                    scales: {
+                        x: {
+                            stacked: true,
+                            beginAtZero: true,
+                            grid: { color: '#e2e8f0' },
+                            ticks: { color: '#64748b', stepSize: 1, precision: 0 }
+                        },
+                        y: {
+                            stacked: true,
+                            grid: { display: false },
+                            ticks: { color: '#334155', font: { size: 12 } }
+                        }
+                    }
+                }
+            });
+        }
+
+        // ── Init ──────────────────────────────────────────────────────────────
+        loadMetrics();
+        loadSubjectProgress();
+        loadBadges();
+        loadInsight();
+        renderWeeklyChart();
+        renderSubjectChart();
+
+        // Refresh every 30s
+        setInterval(() => { loadMetrics(); loadSubjectProgress(); loadBadges(); loadInsight(); renderWeeklyChart(); renderSubjectChart(); }, 30000);
+        window.addEventListener('storage', () => { loadMetrics(); loadSubjectProgress(); loadBadges(); loadInsight(); renderWeeklyChart(); renderSubjectChart(); });
+    </script>
+    <script>
+        document.addEventListener('click', () => {
+            if (window.parent && typeof window.parent.closeOverlays === 'function') {
+                window.parent.closeOverlays();
+            }
+        });
+    </script>
+</body>
+</html>

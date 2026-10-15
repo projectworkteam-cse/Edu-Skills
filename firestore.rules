@@ -1,0 +1,38 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // ══════════════════════════════════════════════════════════════════════════
+    // PER-USER DATA ISOLATION AND ACCESS CONTROL
+    // ══════════════════════════════════════════════════════════════════════════
+    // Users can only read, create, update, or delete data within their own UID tree.
+    // User 1 cannot access User 2's data even if they try to manipulate document IDs.
+    match /users/{userId} {
+      allow read, write: if request.auth != null && request.auth.uid == userId;
+
+      match /{allSubcollections=**} {
+        allow read, write: if request.auth != null && request.auth.uid == userId;
+      }
+    }
+
+    // Public username mapping (alias lookup)
+    // - get: allowed for individual alias sign-in
+    // - list: denied to prevent user enumeration and email harvesting (SEC-03)
+    // - create: requires auth, matching UID, and valid username regex (SEC-04, AUTH-05)
+    // - update, delete: requires existing document ownership (SEC-04)
+    match /usernames/{username} {
+      allow get: if true;
+      allow list: if false;
+      allow create: if request.auth != null
+                    && request.resource.data.uid == request.auth.uid
+                    && username.matches('^[a-z0-9_]{3,20}$');
+      allow update, delete: if request.auth != null
+                    && resource.data.uid == request.auth.uid
+                    && (request.method == 'delete' || request.resource.data.uid == resource.data.uid);
+    }
+
+    // Deny all other access by default (SEC-07: syntax error fixed with 'if')
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
