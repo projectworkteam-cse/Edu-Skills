@@ -986,6 +986,40 @@
 
 <body>
 
+    <!-- Boot Loader (V1-AUTH-05, V1-PERF-03) -->
+    <div id="boot-loader" style="position:fixed;inset:0;background:#f8fafc;z-index:99999;display:flex;flex-direction:column;align-items:center;justify-content:center;transition:opacity 0.25s ease;">
+        <div style="width:48px;height:48px;border-radius:12px;background:#5B21D6;display:flex;align-items:center;justify-content:center;margin-bottom:16px;box-shadow:0 10px 25px rgba(91,33,214,0.25);">
+            <i class="fas fa-graduation-cap" style="color:white;font-size:22px;"></i>
+        </div>
+        <div style="font-weight:700;color:#0f172a;letter-spacing:0.5px;font-size:15px;margin-bottom:6px;">EDU-SKILL'S AI</div>
+        <div style="font-size:12px;color:#64748b;margin-bottom:20px;">Loading your academic workspace...</div>
+        <div style="width:160px;height:4px;background:#e2e8f0;border-radius:999px;overflow:hidden;position:relative;">
+            <div style="width:40%;height:100%;background:#5B21D6;border-radius:999px;animation:bootProgress 1.2s infinite ease-in-out;"></div>
+        </div>
+    </div>
+    <style>
+        @keyframes bootProgress {
+            0% { transform: translateX(-100%); width: 30%; }
+            50% { width: 60%; }
+            100% { transform: translateX(250%); width: 30%; }
+        }
+    </style>
+    <script>
+        window.dismissBootLoader = function () {
+            const loader = document.getElementById('boot-loader');
+            if (loader && loader.style.display !== 'none') {
+                loader.style.opacity = '0';
+                loader.style.pointerEvents = 'none';
+                setTimeout(() => {
+                    if (loader.parentNode) loader.parentNode.removeChild(loader);
+                }, 300);
+            }
+        };
+        setTimeout(window.dismissBootLoader, 4000);
+        window.addEventListener('eduskill:hydrated', window.dismissBootLoader);
+        window.addEventListener('eduskill-cloud-ready', window.dismissBootLoader);
+    </script>
+
     <div class="sidebar-overlay" id="sidebarOverlay" onclick="closeSidebar()"></div>
     <div class="tasks-overlay" id="tasksOverlay" onclick="closeTasksPanel()"></div>
 

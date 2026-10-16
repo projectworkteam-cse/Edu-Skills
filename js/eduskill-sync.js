@@ -486,6 +486,10 @@
         channel.postMessage({ type: 'hydrated', uid });
       }
 
+      if (typeof window.dismissBootLoader === 'function') {
+        window.dismissBootLoader();
+      }
+
       if (isDirty) {
         scheduleSync();
       }
@@ -493,6 +497,9 @@
       console.warn('[sync] Cloud load failed:', e.message);
       hydrated = true;
       emitSyncStatus('error', e.message);
+      if (typeof window.dismissBootLoader === 'function') {
+        window.dismissBootLoader();
+      }
     }
   }
 
@@ -631,6 +638,15 @@
   if (auth) {
     auth.onAuthStateChanged(user => {
       if (user) {
+        // V1-AUTH-02: Verified email gate
+        if (!user.emailVerified) {
+          try { auth.signOut(); } catch (_) {}
+          nativeRemove.call(window.localStorage, ACTIVE);
+          const emailParam = encodeURIComponent(user.email || '');
+          (window.top || window).location.href = 'loginform.html?unverified=1&email=' + emailParam;
+          return;
+        }
+
         if (isShell) {
           hydrateCloud(user);
         } else {

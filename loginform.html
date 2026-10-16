@@ -292,9 +292,9 @@
             <input 
               id="signup-password"
               type="password" 
-              placeholder="Min 6 chars" 
+              placeholder="Min 8 chars" 
               required
-              minlength="6"
+              minlength="8"
               class="w-full pl-9 pr-8 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 text-gray-600 placeholder:text-gray-400 bg-gray-50/50"
             >
             <button type="button" id="toggle-signup-password" onclick="togglePassword('signup-password', 'toggle-signup-password', 'eye-signup')" class="absolute inset-y-0 right-0 pr-2.5 flex items-center text-gray-400 hover:text-gray-600">
@@ -314,7 +314,7 @@
               type="password" 
               placeholder="Repeat password" 
               required
-              minlength="6"
+              minlength="8"
               class="w-full pl-9 pr-8 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 text-gray-600 placeholder:text-gray-400 bg-gray-50/50"
             >
             <button type="button" id="toggle-signup-confirm-password" onclick="togglePassword('signup-confirm-password', 'toggle-signup-confirm-password', 'eye-signup-confirm')" class="absolute inset-y-0 right-0 pr-2.5 flex items-center text-gray-400 hover:text-gray-600">
@@ -367,6 +367,16 @@
       }
     });
 
+    // Check for unverified redirect flag (V1-AUTH-02)
+    try {
+      const urlParams = new URLSearchParams(window.location.search);
+      if (urlParams.get('unverified') === '1') {
+        const uEmail = urlParams.get('email') || '';
+        showUnverifiedBox(uEmail);
+        showSigninStatus('Please verify your email address to access your workspace.', 'info');
+      }
+    } catch (_) {}
+
     // ══════════════════════════════════════════════════════════════════════════
     // FRIENDLY ERROR FORMATTER (matching WEBISCRAP pattern, AUTH-07)
     // ══════════════════════════════════════════════════════════════════════════
@@ -394,13 +404,24 @@
         case 'auth/email-already-in-use':
           return 'This email address is already registered. Please sign in instead.';
         case 'auth/weak-password':
-          return 'Password must be at least 6 characters long.';
+          return 'Password must be at least 8 characters long.';
         case 'auth/invalid-email':
           return 'Please enter a valid email address.';
         case 'auth/network-request-failed':
           return 'Network error. Please check your internet connection.';
+        case 'permission-denied':
+          return 'Action not permitted. If signing up, that username might already be in use.';
+        case 'username-taken':
+          return 'That username is already taken. Please choose another username.';
+        case 'unavailable':
+          return 'Service is temporarily unavailable. Please try again shortly.';
+        case 'deadline-exceeded':
+          return 'Request timed out. Please check your internet connection and try again.';
         default:
-          return msg.includes('Firebase:') ? 'Sign-in service is currently busy. Please try again.' : msg;
+          if (!msg || msg.includes('Firebase:') || msg.includes('[code=')) {
+            return 'Authentication error. Please try again.';
+          }
+          return msg;
       }
     }
 
@@ -583,7 +604,7 @@
     }
 
     // ══════════════════════════════════════════════════════════════════════════
-    // GOOGLE AUTH (DIRECT REDIRECT FLOW)
+    // GOOGLE AUTH (POPUP FIRST, REDIRECT FALLBACK - V1-AUTH-03)
     // ══════════════════════════════════════════════════════════════════════════
     async function signInWithGoogle() {
       clearSigninStatus();
@@ -597,7 +618,7 @@
           btn.disabled = loading;
           if (loading) {
             btn.dataset.origHtml = btn.dataset.origHtml || btn.innerHTML;
-            btn.innerHTML = '<svg class="animate-spin h-4 w-4 text-purple-600 inline mr-2" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path></svg> Redirecting to Google...';
+            btn.innerHTML = '<svg class="animate-spin h-4 w-4 text-purple-600 inline mr-2" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path></svg> Connecting to Google...';
           } else if (btn.dataset.origHtml) {
             btn.innerHTML = btn.dataset.origHtml;
           }
@@ -606,11 +627,28 @@
 
       setGoogleLoading(true);
 
+      const provider = new firebase.auth.GoogleAuthProvider();
+      provider.setCustomParameters({ prompt: 'select_account' });
+
       try {
-        const provider = new firebase.auth.GoogleAuthProvider();
-        provider.setCustomParameters({ prompt: 'select_account' });
-        await auth.signInWithRedirect(provider);
+        const result = await auth.signInWithPopup(provider);
+        if (result && result.user) {
+          showSigninStatus('Google sign-in verified! Entering dashboard...', 'success');
+          await handleAuthSuccess(result.user, 'google');
+          return;
+        }
       } catch (err) {
+        // Fallback to redirect if popup is blocked by browser
+        if (err.code === 'auth/popup-blocked' || err.code === 'auth/cancelled-popup-request') {
+          try {
+            await auth.signInWithRedirect(provider);
+            return;
+          } catch (redErr) {
+            setGoogleLoading(false);
+            showSigninStatus(formatAuthError(redErr), 'error');
+            return;
+          }
+        }
         setGoogleLoading(false);
         showSigninStatus(formatAuthError(err), 'error');
       }
@@ -619,7 +657,7 @@
     // Check for redirect result on load
     auth.getRedirectResult().then(async (credential) => {
       if (credential && credential.user) {
-        showSigninStatus('Google sign-in verified! Redirecting to dashboard...', 'success');
+        showSigninStatus('Google sign-in verified! Entering dashboard...', 'success');
         await handleAuthSuccess(credential.user, 'google');
       }
     }).catch(err => {
@@ -639,9 +677,8 @@
       const profileData = {
         name: name,
         email: email,
-        photoURL: photo,
-        authProvider: providerType,
-        lastLoginAt: firebase.firestore.FieldValue.serverTimestamp()
+        avatarUrl: photo,
+        updatedAt: firebase.firestore.FieldValue.serverTimestamp()
       };
 
       if (!snap || !snap.exists) {
@@ -658,7 +695,7 @@
     }
 
     // ══════════════════════════════════════════════════════════════════════════
-    // SIGN IN WITH EMAIL / USERNAME
+    // SIGN IN WITH EMAIL / USERNAME (V1-SEC-05, V1-AUTH-02)
     // ══════════════════════════════════════════════════════════════════════════
     document.getElementById('form-signin').addEventListener('submit', async function(e) {
       e.preventDefault();
@@ -681,20 +718,44 @@
       try {
         let signInEmail = inputVal;
 
-        // Resolve username alias if no '@' present (AUTH-02, SEC-03)
+        // Resolve username alias if no '@' present (V1-SEC-05)
         if (!inputVal.includes('@')) {
           const cleanUsername = inputVal.toLowerCase();
-          const unameSnap = await db.collection('usernames').doc(cleanUsername).get();
-          if (!unameSnap.exists || !unameSnap.data() || !unameSnap.data().email) {
-            // Generic error prevents username enumeration (AUTH-08)
+          let resolvedEmail = null;
+          try {
+            const resp = await fetch('/api/auth/resolve-username', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ username: cleanUsername })
+            });
+            if (resp.ok) {
+              const body = await resp.json();
+              resolvedEmail = body.email;
+            } else if (resp.status === 429) {
+              throw { code: 'auth/too-many-requests' };
+            } else if (resp.status === 400) {
+              throw { code: 'auth/invalid-credential' };
+            } else if (resp.status === 503) {
+              // Fallback to client Firestore get if API server endpoint is not configured
+              const unameSnap = await db.collection('usernames').doc(cleanUsername).get().catch(() => null);
+              resolvedEmail = (unameSnap && unameSnap.exists) ? unameSnap.data()?.email : null;
+            }
+          } catch (e) {
+            if (e.code) throw e;
+            const unameSnap = await db.collection('usernames').doc(cleanUsername).get().catch(() => null);
+            resolvedEmail = (unameSnap && unameSnap.exists) ? unameSnap.data()?.email : null;
+          }
+
+          if (!resolvedEmail) {
             throw { code: 'auth/invalid-credential' };
           }
-          signInEmail = unameSnap.data().email;
+          signInEmail = resolvedEmail;
         }
 
         const credential = await auth.signInWithEmailAndPassword(signInEmail, password);
 
-        // Check Email Verification (AUTH-01, WEBISCRAP pattern)
+        // Check Email Verification with live server refresh (V1-AUTH-02)
+        await credential.user.reload().catch(() => {});
         if (!credential.user.emailVerified) {
           unverifiedUserPending = credential.user;
           showUnverifiedBox(signInEmail);
@@ -729,7 +790,7 @@
     });
 
     // ══════════════════════════════════════════════════════════════════════════
-    // SIGN UP WITH EMAIL, USERNAME & EMAIL VERIFICATION
+    // SIGN UP WITH EMAIL, USERNAME & ATOMIC ROLLBACK (V1-AUTH-01, V1-AUTH-06)
     // ══════════════════════════════════════════════════════════════════════════
     document.getElementById('form-signup').addEventListener('submit', async function(e) {
       e.preventDefault();
@@ -741,7 +802,6 @@
       const email = document.getElementById('signup-email').value.trim();
       const course = document.getElementById('signup-course').value.trim();
       const studentId = document.getElementById('signup-student-id').value.trim();
-      // Keep passwords exact (AUTH-06)
       const password = document.getElementById('signup-password').value;
       const confirmPassword = document.getElementById('signup-confirm-password').value;
       const btn = this.querySelector('button[type="submit"]');
@@ -767,8 +827,9 @@
         return;
       }
 
-      if (password.length < 6) {
-        showSignupStatus('Password must be at least 6 characters long.', 'error');
+      // Password length validation: minimum 8 characters (V1-AUTH-06)
+      if (password.length < 8) {
+        showSignupStatus('Password must be at least 8 characters long.', 'error');
         return;
       }
 
@@ -779,45 +840,48 @@
 
       btn.disabled = true;
       btn.innerHTML = '<svg class="animate-spin h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path></svg> Creating account...';
-      showSignupStatus('Checking username availability...', 'info');
+      showSignupStatus('Registering account with Firebase...', 'info');
 
       try {
         const cleanUsername = username.toLowerCase();
-        const unameRef = db.collection('usernames').doc(cleanUsername);
 
-        // Pre-check username availability (AUTH-02)
-        const unameSnap = await unameRef.get().catch(() => null);
-        if (unameSnap && unameSnap.exists) {
-          showSignupStatus('That username is already taken. Please choose another username.', 'error');
-          btn.disabled = false;
-          btn.innerHTML = '<i data-lucide="user-plus" class="w-4 h-4"></i> Create Account & Send Verification';
-          lucide.createIcons();
-          return;
-        }
-
-        showSignupStatus('Registering account with Firebase...', 'info');
+        // 1. Create auth user first
         const userCredential = await auth.createUserWithEmailAndPassword(email, password);
         const uid = userCredential.user.uid;
 
-        // Save profile
-        const profileData = {
-          name: name,
-          username: username,
-          email: email,
-          course: course,
-          studentId: studentId,
-          createdAt: firebase.firestore.FieldValue.serverTimestamp()
-        };
-        await db.collection('users').doc(uid).set(profileData);
+        // 2. Atomic batch write: users/{uid} profile AND usernames/{cleanUsername} reservation (V1-AUTH-01)
+        const batch = db.batch();
+        const userRef = db.collection('users').doc(uid);
+        const unameRef = db.collection('usernames').doc(cleanUsername);
 
-        // Reserve username mapping (SEC-04, AUTH-02)
-        await unameRef.set({
+        batch.set(userRef, {
+          name: name,
+          username: cleanUsername,
           email: email,
-          uid: uid,
+          course: course || '',
+          studentId: studentId || '',
           createdAt: firebase.firestore.FieldValue.serverTimestamp()
         });
 
-        // Send Email Verification (AUTH-01, WEBISCRAP pattern)
+        batch.set(unameRef, {
+          uid: uid,
+          email: email,
+          createdAt: firebase.firestore.FieldValue.serverTimestamp()
+        });
+
+        try {
+          await batch.commit();
+        } catch (batchErr) {
+          // Rollback: delete auth user immediately so account is not orphaned (V1-AUTH-01)
+          console.error('[signup] Batch reservation failed, rolling back auth user:', batchErr);
+          await userCredential.user.delete().catch(() => {});
+          if (batchErr.code === 'permission-denied' || (batchErr.message && batchErr.message.includes('permission'))) {
+            throw { code: 'username-taken', message: 'That username is already taken. Please choose another username.' };
+          }
+          throw batchErr;
+        }
+
+        // 3. Send verification email (V1-AUTH-02, V1-AUTH-04)
         showSignupStatus('Sending verification email to ' + email + '...', 'info');
         try {
           await userCredential.user.sendEmailVerification();
@@ -825,7 +889,7 @@
           console.warn('Verification email send issue:', mailErr);
         }
 
-        // Sign out unverified account so student must verify first
+        // 4. Sign out unverified account so student must verify first
         await auth.signOut();
 
         showSignupStatus('Account created! Verification link sent to ' + email + '. Important: Check both your Inbox and Spam/Junk folder before signing in.', 'success');
@@ -835,7 +899,7 @@
         setTimeout(() => {
           switchTab('signin');
           showSigninStatus('Account created! Please check your email (' + email + ') — including Spam/Junk folder — to verify your account, then sign in below.', 'info');
-        }, 2000);
+        }, 2200);
 
       } catch (err) {
         showSignupStatus(formatAuthError(err), 'error');

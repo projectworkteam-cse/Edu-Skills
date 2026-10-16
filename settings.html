@@ -522,8 +522,13 @@
                 <button class="tab-btn" onclick="switchTab('remindersTab', this)">
                     <i class="fas fa-bell"></i> Reminders
                 </button>
+
+                <button class="tab-btn" onclick="switchTab('securityTab', this)">
+                    <i class="fas fa-shield-halved"></i> Security &amp; Password
+                </button>
+
                 <button class="tab-btn" onclick="switchTab('dataTab', this)">
-                    <i class="fas fa-database"></i> Storage & Reset
+                    <i class="fas fa-database"></i> Data &amp; Account
                 </button>
             </nav>
 
@@ -586,10 +591,6 @@
                     </div>
                 </div>
 
-
-
-
-
                 <div id="remindersTab" class="tab-panel">
                     <div class="card">
                         <div class="card-header">
@@ -628,22 +629,111 @@
                     </div>
                 </div>
 
+                <div id="securityTab" class="tab-panel">
+                    <div class="card">
+                        <div class="card-header">
+                            <div class="card-title">
+                                <i class="fas fa-key" style="color: var(--primary-blue);"></i> Change Password
+                            </div>
+                            <div class="card-subtitle">Update your account login password. Requires your current password for security.</div>
+                        </div>
+
+                        <div id="googleAuthNotice" style="display: none; padding: 12px 14px; background: #eef2ff; border: 1px solid #c7d2fe; border-radius: 8px; font-size: 12.5px; color: var(--primary-blue); margin-bottom: 16px;">
+                            <i class="fab fa-google"></i> You are signed in via Google. Password management is handled through your Google Account.
+                        </div>
+
+                        <div id="passwordChangeForm" class="form-grid" style="grid-template-columns: 1fr;">
+                            <div class="form-group">
+                                <label for="currPasswordInput">Current Password</label>
+                                <div class="input-wrapper">
+                                    <i class="fas fa-lock input-icon"></i>
+                                    <input type="password" id="currPasswordInput" placeholder="Enter your current password" />
+                                </div>
+                            </div>
+
+                            <div class="form-group">
+                                <label for="newPasswordInput">New Password (minimum 8 characters)</label>
+                                <div class="input-wrapper">
+                                    <i class="fas fa-shield-halved input-icon"></i>
+                                    <input type="password" id="newPasswordInput" placeholder="Minimum 8 characters" />
+                                </div>
+                            </div>
+
+                            <div class="form-group">
+                                <label for="confirmPasswordInput">Confirm New Password</label>
+                                <div class="input-wrapper">
+                                    <i class="fas fa-check-double input-icon"></i>
+                                    <input type="password" id="confirmPasswordInput" placeholder="Repeat new password" />
+                                </div>
+                            </div>
+
+                            <div class="card-actions" style="margin-top: 10px;">
+                                <button class="btn-primary" onclick="changeAccountPassword()">
+                                    <i class="fas fa-save"></i> Update Password
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
                 <div id="dataTab" class="tab-panel">
+                    <!-- Export Card -->
+                    <div class="card">
+                        <div class="card-header">
+                            <div class="card-title">
+                                <i class="fas fa-file-export" style="color: var(--primary-blue);"></i> Export Workspace Data
+                            </div>
+                            <div class="card-subtitle">Download a complete JSON backup of your subjects, exams, timetables, and notes.</div>
+                        </div>
+                        <p style="font-size: 13px; color: var(--text-sub); line-height: 1.5; margin-bottom: 16px;">
+                            Your data belongs to you. You can export an offline backup file at any time to preserve your academic records.
+                        </p>
+                        <div style="display: flex; justify-content: flex-end;">
+                            <button class="btn-primary" onclick="exportUserData()">
+                                <i class="fas fa-download"></i> Download Backup (JSON)
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Reset Storage Card -->
+                    <div class="card" style="border-color: #fed7aa;">
+                        <div class="card-header">
+                            <div class="card-title" style="color: var(--accent-orange);">
+                                <i class="fas fa-arrows-rotate"></i> Reset Local Cache
+                            </div>
+                            <div class="card-subtitle">Clear cached offline data in this browser. Cloud data is safely preserved.</div>
+                        </div>
+                        <p style="font-size: 13px; color: var(--text-sub); line-height: 1.5; margin-bottom: 16px;">
+                            Clearing local storage refreshes your device state and pulls fresh copies from the cloud on next sync.
+                        </p>
+                        <div style="display: flex; justify-content: flex-end;">
+                            <button class="btn-danger" style="background:#fff7ed;color:#c2410c;border-color:#fdba74;" onclick="clearAllData()">
+                                <i class="fas fa-rotate"></i> Reset Local Storage
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Delete Account Card -->
                     <div class="card" style="border-color: var(--red-border);">
                         <div class="card-header">
                             <div class="card-title" style="color: var(--red-text);">
-                                <i class="fas fa-triangle-exclamation"></i> Storage Management
+                                <i class="fas fa-triangle-exclamation"></i> Danger Zone: Delete Account
                             </div>
-                            <div class="card-subtitle">Reset offline application data stored by EDU-SKILL'S AI in this browser.</div>
+                            <div class="card-subtitle">Permanently delete your account and all associated cloud data.</div>
                         </div>
-
-                        <p style="font-size: 13px; color: var(--text-sub); line-height: 1.5; margin-bottom: 20px;">
-                            Clearing storage removes registered subjects, exam schedules, generated timetables, and saved credentials.
+                        <p style="font-size: 13px; color: var(--text-sub); line-height: 1.5; margin-bottom: 14px;">
+                            This action is permanent and irreversible. All your study schedules, notes, and username mapping will be permanently deleted.
                         </p>
-
-                        <div style="display: flex; gap: 12px; justify-content: flex-end;">
-                            <button class="btn-danger" onclick="clearAllData()">
-                                <i class="fas fa-trash-alt"></i> Reset Local Storage
+                        <div class="form-group" style="margin-bottom: 16px;">
+                            <label for="deleteConfirmInput" style="font-size: 12px; font-weight: 600; color: var(--red-text);">Type your username or email prefix below to confirm:</label>
+                            <div class="input-wrapper" style="margin-top: 4px;">
+                                <i class="fas fa-user-xmark input-icon"></i>
+                                <input type="text" id="deleteConfirmInput" placeholder="Confirm your username" />
+                            </div>
+                        </div>
+                        <div style="display: flex; justify-content: flex-end;">
+                            <button class="btn-danger" onclick="deleteUserAccount()">
+                                <i class="fas fa-trash-can"></i> Delete Account Permanently
                             </button>
                         </div>
                     </div>
@@ -693,6 +783,17 @@
 
             toggleExamAlerts.checked = (localStorage.getItem('pref_exam_alerts') !== 'false');
             toggleStudyReminder.checked = (localStorage.getItem('pref_study_reminder') !== 'false');
+
+            // Detect if logged in via Google OAuth
+            if (window.firebase && window.firebase.auth) {
+                const u = window.firebase.auth().currentUser;
+                if (u && u.providerData && u.providerData.some(p => p.providerId === 'google.com')) {
+                    const notice = document.getElementById('googleAuthNotice');
+                    const form = document.getElementById('passwordChangeForm');
+                    if (notice) notice.style.display = 'block';
+                    if (form) form.style.display = 'none';
+                }
+            }
         }
 
         window.addEventListener('eduskill-cloud-ready', () => {
@@ -734,6 +835,155 @@
             localStorage.setItem('pref_exam_alerts', toggleExamAlerts.checked);
             localStorage.setItem('pref_study_reminder', toggleStudyReminder.checked);
             showToast('Preferences saved.', true);
+        }
+
+        // Change Password (V1-AUTH-07)
+        async function changeAccountPassword() {
+            const curr = document.getElementById('currPasswordInput').value;
+            const next = document.getElementById('newPasswordInput').value;
+            const conf = document.getElementById('confirmPasswordInput').value;
+
+            if (!curr || !next || !conf) {
+                showToast('Please fill in all password fields.', false);
+                return;
+            }
+            if (next.length < 8) {
+                showToast('New password must be at least 8 characters long.', false);
+                return;
+            }
+            if (next !== conf) {
+                showToast('New passwords do not match.', false);
+                return;
+            }
+
+            const auth = window.firebase && window.firebase.auth ? window.firebase.auth() : null;
+            const user = auth ? auth.currentUser : null;
+            if (!user || !user.email) {
+                showToast('Active session not found. Please log in again.', false);
+                return;
+            }
+
+            try {
+                const cred = firebase.auth.EmailAuthProvider.credential(user.email, curr);
+                await user.reauthenticateWithCredential(cred);
+                await user.updatePassword(next);
+                document.getElementById('currPasswordInput').value = '';
+                document.getElementById('newPasswordInput').value = '';
+                document.getElementById('confirmPasswordInput').value = '';
+                showToast('Password updated successfully!', true);
+            } catch (err) {
+                console.error('[settings] Password update failed:', err);
+                if (err.code === 'auth/wrong-password' || err.code === 'auth/invalid-credential') {
+                    showToast('Current password is incorrect.', false);
+                } else if (err.code === 'auth/weak-password') {
+                    showToast('Password is too weak. Please use at least 8 characters.', false);
+                } else if (err.code === 'auth/requires-recent-login') {
+                    showToast('For security, please log out and sign back in before changing password.', false);
+                } else {
+                    showToast(err.message || 'Could not update password. Please try again.', false);
+                }
+            }
+        }
+
+        // Export User Data (V1-AUTH-07)
+        function exportUserData() {
+            try {
+                const uid = localStorage.getItem('__eduskill_active_uid') || '';
+                const prefix = uid ? `eduskill_user_${uid}__` : '';
+
+                const getJSON = (k) => {
+                    try {
+                        const raw = localStorage.getItem(prefix + k) || localStorage.getItem(k);
+                        return raw ? JSON.parse(raw) : null;
+                    } catch (_) { return null; }
+                };
+
+                const exportPayload = {
+                    exportDate: new Date().toISOString(),
+                    schemaVersion: parseInt(localStorage.getItem(prefix + 'schemaVersion') || '2', 10),
+                    user: {
+                        name: localStorage.getItem('userName') || '',
+                        email: localStorage.getItem('userEmail') || '',
+                        username: localStorage.getItem('username') || '',
+                        qualification: localStorage.getItem('userRole') || ''
+                    },
+                    subjects: getJSON('subjects') || [],
+                    exams: getJSON('exams') || [],
+                    notes: getJSON('notes') || [],
+                    timetable: getJSON('timetable') || null,
+                    quizHistory: getJSON('quizHistory') || getJSON('quiz_history') || []
+                };
+
+                const blob = new Blob([JSON.stringify(exportPayload, null, 2)], { type: 'application/json' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                const dateStr = new Date().toISOString().slice(0, 10);
+                a.download = `eduskill_backup_${dateStr}.json`;
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                URL.revokeObjectURL(url);
+                showToast('Data exported successfully!', true);
+            } catch (err) {
+                console.error('[settings] Export failed:', err);
+                showToast('Export failed: ' + err.message, false);
+            }
+        }
+
+        // Delete Account (V1-AUTH-07)
+        async function deleteUserAccount() {
+            const auth = window.firebase && window.firebase.auth ? window.firebase.auth() : null;
+            const db = window.firebase && window.firebase.firestore ? window.firebase.firestore() : null;
+            const user = auth ? auth.currentUser : null;
+            if (!user) {
+                showToast('You must be signed in to delete your account.', false);
+                return;
+            }
+
+            const expectedUsername = (localStorage.getItem('username') || (user.email ? user.email.split('@')[0] : '')).trim().toLowerCase();
+            const inputVal = (document.getElementById('deleteConfirmInput').value || '').trim().toLowerCase();
+
+            if (!inputVal || inputVal !== expectedUsername) {
+                showToast(`Type "${expectedUsername}" into the box to confirm deletion.`, false);
+                return;
+            }
+
+            if (!confirm('FINAL WARNING: This will permanently delete your account, subjects, exams, and notes. This cannot be undone. Proceed?')) {
+                return;
+            }
+
+            const uid = user.uid;
+            try {
+                if (db) {
+                    if (expectedUsername) {
+                        await db.collection('usernames').doc(expectedUsername).delete().catch(() => {});
+                    }
+                    const knownShards = ['core', 'quiz', 'timetable', 'notes', 'state'];
+                    for (const s of knownShards) {
+                        await db.collection('users').doc(uid).collection('app').doc(s).delete().catch(() => {});
+                    }
+                    await db.collection('users').doc(uid).delete().catch(() => {});
+                }
+
+                if (typeof window.eduskillResetWorkspace === 'function') {
+                    await window.eduskillResetWorkspace();
+                } else {
+                    localStorage.clear();
+                }
+
+                await user.delete();
+
+                alert('Your account and all associated data have been permanently deleted.');
+                (window.top || window).location.href = 'loginform.html';
+            } catch (err) {
+                console.error('[settings] Account deletion error:', err);
+                if (err.code === 'auth/requires-recent-login') {
+                    showToast('For security, please sign out and sign back in before deleting your account.', false);
+                } else {
+                    showToast('Account deletion failed: ' + (err.message || 'Unknown error'), false);
+                }
+            }
         }
 
         async function clearAllData() {
