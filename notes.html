@@ -9,6 +9,7 @@
 <script src="js/services/sync-shards.js"></script>
 <script src="js/services/storage.js"></script>
 <script src="js/services/ai-client.js"></script>
+<script src="js/lib/ui.js"></script>
 <script src="js/env.js"></script>
 <script src="js/eduskill-sync.js"></script>
 
@@ -16,6 +17,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>EDU-SKILL'S AI - Smart Notes</title>
 
+    <link rel="stylesheet" href="css/base.css">
+    <link rel="stylesheet" href="css/components.css">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css">
 
     <style>
@@ -676,16 +679,23 @@ Match the structure, depth and wording to the "${style}" style. Do not add any t
         }
 
         // ── SAVE / SAVED LIST ───────────────────────────────────────────────
-        function saveNote() {
+        async function saveNote() {
             if (!currentNote) return;
             const list = getJSON(NOTES_KEY, []);
             if (list.length >= 30) {
                 const oldestTopic = list[list.length - 1]?.topic || 'oldest note';
-                const confirmed = confirm(
-                    `You have reached the limit of 30 saved revision notes.\n\n` +
-                    `Saving this note will remove your oldest saved note ("${oldestTopic}").\n\n` +
-                    `Do you want to proceed and replace the oldest note?`
-                );
+                const confirmed = window.EduUI && typeof EduUI.confirmDialog === 'function'
+                    ? await EduUI.confirmDialog({
+                        title: 'Note Limit Reached',
+                        message: `You have reached the limit of 30 saved revision notes.\n\nSaving this note will remove your oldest saved note ("${oldestTopic}").\n\nDo you want to proceed and replace the oldest note?`,
+                        confirmLabel: 'Replace Oldest',
+                        cancelLabel: 'Keep Existing'
+                    })
+                    : confirm(
+                        `You have reached the limit of 30 saved revision notes.\n\n` +
+                        `Saving this note will remove your oldest saved note ("${oldestTopic}").\n\n` +
+                        `Do you want to proceed and replace the oldest note?`
+                    );
                 if (!confirmed) {
                     setStatus('Save cancelled. Existing notes were kept.', 'info');
                     return;
@@ -739,8 +749,17 @@ Match the structure, depth and wording to the "${style}" style. Do not add any t
             document.getElementById('notesCard').scrollIntoView({ behavior: 'smooth', block: 'start' });
         }
 
-        function deleteSaved(id) {
-            if (!confirm('Delete this saved note?')) return;
+        async function deleteSaved(id) {
+            const confirmed = window.EduUI && typeof EduUI.confirmDialog === 'function'
+                ? await EduUI.confirmDialog({
+                    title: 'Delete Note',
+                    message: 'Delete this saved note?',
+                    confirmLabel: 'Delete Note',
+                    cancelLabel: 'Cancel',
+                    isDanger: true
+                })
+                : confirm('Delete this saved note?');
+            if (!confirmed) return;
             const list = getJSON(NOTES_KEY, []).filter(x => x.id !== id);
             localStorage.setItem(NOTES_KEY, JSON.stringify(list));
             renderSavedNotes();

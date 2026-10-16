@@ -5,6 +5,7 @@ const { rateLimit } = require('../../lib/rate-limit');
 const PROJECT_ID = process.env.FIREBASE_PROJECT_ID || 'eduskillai-3e807';
 
 module.exports = async function handler(req, res) {
+  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
   if (req.method !== 'POST') {
     res.setHeader('Allow', 'POST');
     return res.status(405).json({ error: 'method_not_allowed', message: 'Only POST is supported.' });

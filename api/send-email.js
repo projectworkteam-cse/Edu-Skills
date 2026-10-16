@@ -43,6 +43,7 @@ const SUBJECTS = {
 };
 
 module.exports = async function handler(req, res) {
+  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
   if (req.method !== 'POST') {
     res.setHeader('Allow', 'POST');
     return err(res, 405, 'method_not_allowed', 'Only POST is supported.');

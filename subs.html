@@ -10,6 +10,7 @@
 <script src="js/domain/migrate.js"></script>
 <script src="js/services/storage.js"></script>
 <script src="js/services/ai-client.js"></script>
+<script src="js/lib/ui.js"></script>
 <script src="js/env.js"></script>
 <script src="js/eduskill-sync.js"></script>
 
@@ -17,6 +18,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>EDU-SKILL'S AI - Subjects &amp; Exams</title>
 
+    <link rel="stylesheet" href="css/base.css">
+    <link rel="stylesheet" href="css/components.css">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css">
 
     <style>
@@ -767,7 +770,7 @@ Only JSON.`;
             notifyDataChange();
         }
 
-        function addExam() {
+        async function addExam() {
             const rawName = document.getElementById('examName').value;
             const name = (rawName || '').trim();
             const subject = document.getElementById('examSubjectSelect').value;
@@ -788,7 +791,15 @@ Only JSON.`;
             today.setHours(0, 0, 0, 0);
             const isPast = examTime < today;
             if (isPast) {
-                if (!confirm(`The date "${date}" is in the past. Do you want to save this as a past exam record?`)) {
+                const confirmed = window.EduUI && typeof EduUI.confirmDialog === 'function'
+                    ? await EduUI.confirmDialog({
+                        title: 'Past Exam Date',
+                        message: `The date "${date}" is in the past. Do you want to save this as a past exam record?`,
+                        confirmLabel: 'Save Past Exam',
+                        cancelLabel: 'Cancel'
+                    })
+                    : confirm(`The date "${date}" is in the past. Do you want to save this as a past exam record?`);
+                if (!confirmed) {
                     return;
                 }
             }
@@ -988,7 +999,8 @@ Only JSON.`;
         }
 
         // ── CASCADE DELETE BY SID (V1-FUNC-04) ──────────────────────────────
-        function deleteSubject(id) {
+        // ── CASCADE DELETE BY SID (V1-FUNC-04) ──────────────────────────────
+        async function deleteSubject(id) {
             const currentSubs = getSubjects();
             const subject = currentSubs.find(s => String(s.id) === String(id));
             if (!subject) return;
@@ -1015,7 +1027,16 @@ Only JSON.`;
             });
 
             const msg = `Are you sure you want to delete "${subject.name}"?\nThis will remove ${matchingExams.length} exam(s), ${matchingTasksCount} linked task(s), and ${matchingQuiz.length} quiz record(s).`;
-            if (!confirm(msg)) return;
+            const confirmed = window.EduUI && typeof EduUI.confirmDialog === 'function'
+                ? await EduUI.confirmDialog({
+                    title: 'Delete Subject',
+                    message: msg,
+                    confirmLabel: 'Delete Subject',
+                    cancelLabel: 'Cancel',
+                    isDanger: true
+                })
+                : confirm(msg);
+            if (!confirmed) return;
 
             const newSubs = currentSubs.filter(s => String(s.id) !== String(id));
             saveSubjects(newSubs);
@@ -1049,10 +1070,21 @@ Only JSON.`;
             notifyDataChange();
         }
 
-        function deleteExam(id) {
+        async function deleteExam(id) {
             const currentExams = getExams();
             const exam = currentExams.find(e => String(e.id || e.eid) === String(id));
-            if (exam && !confirm(`Are you sure you want to delete exam "${exam.name}"?`)) return;
+            if (exam) {
+                const confirmed = window.EduUI && typeof EduUI.confirmDialog === 'function'
+                    ? await EduUI.confirmDialog({
+                        title: 'Delete Exam',
+                        message: `Are you sure you want to delete exam "${exam.name}"?`,
+                        confirmLabel: 'Delete Exam',
+                        cancelLabel: 'Cancel',
+                        isDanger: true
+                    })
+                    : confirm(`Are you sure you want to delete exam "${exam.name}"?`);
+                if (!confirmed) return;
+            }
 
             const newExams = currentExams.filter(e => String(e.id || e.eid) !== String(id));
             saveExams(newExams);

@@ -9,6 +9,7 @@
 <script src="js/services/sync-shards.js"></script>
 <script src="js/domain/tasks.js"></script>
 <script src="js/services/storage.js"></script>
+<script src="js/lib/ui.js"></script>
 <script src="js/env.js"></script>
 <script src="js/eduskill-sync.js"></script>
 
@@ -16,6 +17,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>EDU-SKILL'S AI - Quiz</title>
 
+    <link rel="stylesheet" href="css/base.css">
+    <link rel="stylesheet" href="css/components.css">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css">
 
     <style>
@@ -1081,7 +1084,7 @@ Format:
             window.scrollTo({ top: 0, behavior: 'smooth' });
         }
 
-        function submitQuiz() {
+        async function submitQuiz() {
             if (!currentQuiz) return;
 
             for (let i = 0; i < currentQuiz.questions.length; i++) {
@@ -1091,7 +1094,15 @@ Format:
 
             const unanswered = selectedAnswers.filter(a => a === null).length;
             if (unanswered > 0) {
-                if (!confirm(`You have ${unanswered} unanswered question(s). Submit anyway?`)) return;
+                const proceed = window.EduUI && typeof EduUI.confirmDialog === 'function'
+                    ? await EduUI.confirmDialog({
+                        title: 'Unanswered Questions',
+                        message: `You have ${unanswered} unanswered question(s). Submit anyway?`,
+                        confirmLabel: 'Submit Anyway',
+                        cancelLabel: 'Keep Answering'
+                    })
+                    : confirm(`You have ${unanswered} unanswered question(s). Submit anyway?`);
+                if (!proceed) return;
             }
 
             let correct = 0;
@@ -1308,9 +1319,18 @@ Format:
             }
         }
 
-        function clearHistory() {
+        async function clearHistory() {
             if (!getHistory().length) return;
-            if (!confirm('Clear all quiz history? This cannot be undone.')) return;
+            const confirmed = window.EduUI && typeof EduUI.confirmDialog === 'function'
+                ? await EduUI.confirmDialog({
+                    title: 'Clear History',
+                    message: 'Clear all quiz history? This cannot be undone.',
+                    confirmLabel: 'Clear History',
+                    cancelLabel: 'Cancel',
+                    isDanger: true
+                })
+                : confirm('Clear all quiz history? This cannot be undone.');
+            if (!confirmed) return;
 
             localStorage.setItem(HISTORY_KEY, JSON.stringify([]));
             renderHistory();

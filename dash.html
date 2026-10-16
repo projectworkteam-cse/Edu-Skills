@@ -14,6 +14,10 @@
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
+<script src="js/services/sync-shards.js"></script>
+<script src="js/domain/dates.js"></script>
+<script src="js/services/storage.js"></script>
+<script src="js/lib/ui.js"></script>
 <script src="js/env.js"></script>
 <script src="js/eduskill-sync.js"></script>
 
@@ -21,6 +25,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>EDU-SKILL'S AI - Dashboard</title>
 
+    <link rel="stylesheet" href="css/base.css">
+    <link rel="stylesheet" href="css/components.css">
     <!-- FontAwesome: icon library used for all the small icons -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css">
 
@@ -621,8 +627,12 @@
         }
 
         // Builds a storage key for today's tasks, e.g. "tasks_2026-07-30"
-        // This must match the key format used in index.html
+        // ── TODAY'S TASK STORAGE KEY ─────────────────────────────────────────
+        // Uses EduDates or fallback to match index.html format tasks_YYYY-MM-DD
         function todayKey() {
+            if (window.EduDates && typeof EduDates.todayKey === 'function') {
+                return EduDates.todayKey();
+            }
             const d = new Date();
             return 'tasks_' + d.getFullYear() + '-' +
                 String(d.getMonth() + 1).padStart(2, '0') + '-' +
@@ -630,13 +640,13 @@
         }
 
         // ── LOAD METRICS ─────────────────────────────────────────────────────
-        // Reads today's task list and subject list from localStorage,
+        // Reads today's task list and subject list safely,
         // calculates completion stats, and updates the four metric cards.
         function loadMetrics() {
-            const tasks = JSON.parse(localStorage.getItem(todayKey()) || '[]');
+            const tasks = window.EduStorage ? EduStorage.get(todayKey(), []) : JSON.parse(localStorage.getItem(todayKey()) || '[]');
             const done = tasks.filter(t => t.done).length; // How many tasks are ticked
             const total = tasks.length;                     // Total tasks added today
-            const remaining = total - done;                     // Tasks still to do
+            const remaining = total - done;                 // Tasks still to do
             // Percentage of tasks completed (0 if no tasks yet)
             const pct = total > 0 ? Math.round((done / total) * 100) : 0;
 
@@ -645,7 +655,7 @@
             document.getElementById('remainingTasks').textContent = remaining;
 
             // Also read the subjects list to show how many subjects are added
-            const subjects = JSON.parse(localStorage.getItem('subjects') || '[]');
+            const subjects = window.EduStorage ? EduStorage.get('subjects', []) : JSON.parse(localStorage.getItem('subjects') || '[]');
             document.getElementById('subjectCount').textContent = subjects.length;
         }
 
@@ -653,7 +663,7 @@
         // Reads the exams list, filters to only future/today exams,
         // sorts by closest date, and shows up to 5 in the dashboard card.
         function loadDashExams() {
-            const exams = JSON.parse(localStorage.getItem('exams') || '[]');
+            const exams = window.EduStorage ? EduStorage.get('exams', []) : JSON.parse(localStorage.getItem('exams') || '[]');
             const el = document.getElementById('dashExamsList');
 
             const today = new Date(); today.setHours(0, 0, 0, 0); // Midnight today for fair comparison
@@ -661,7 +671,10 @@
             const upcoming = exams
                 .map(e => {
                     const d = new Date(e.date + 'T00:00:00');
-                    return { ...e, examDate: d, daysLeft: Math.round((d - today) / 86400000) };
+                    const daysLeft = window.EduDates && typeof EduDates.daysBetween === 'function'
+                        ? EduDates.daysBetween(today, d)
+                        : Math.round((d - today) / 86400000);
+                    return { ...e, examDate: d, daysLeft };
                 })
                 .filter(e => e.daysLeft >= 0)            // Ignore past exams
                 .sort((a, b) => a.daysLeft - b.daysLeft) // Nearest exam first
@@ -694,13 +707,13 @@
         //   - Blue line: whether tasks were planned (100 if any tasks existed that day, else 0)
         //   - Green line: actual % of tasks completed per day
         //   - Purple line: % of subject topics completed (overall mastery, constant across the week)
-        // Looks back at the current week (Monday to Sunday).
-        let chart; // Keep a reference to destroy and recreate the chart on change
+        // In-place update prevents canvas flicker.
+        let chart = null;
 
-        // Reads every subject out of localStorage and returns how many topics are
+        // Reads every subject out of storage and returns how many topics are
         // marked done vs. how many exist in total, as a percentage.
         function getSubjectTopicPercent() {
-            const subjects = JSON.parse(localStorage.getItem('subjects') || '[]');
+            const subjects = window.EduStorage ? EduStorage.get('subjects', []) : JSON.parse(localStorage.getItem('subjects') || '[]');
             let done = 0, total = 0;
 
             subjects.forEach(s => {
@@ -733,15 +746,12 @@
                 for (let day = 1; day <= daysInMonth; day++) {
                     const d = new Date(year, month, day);
                     labels.push(day % 5 === 0 || day === 1 || day === daysInMonth ? `${monthName} ${day}` : `${day}`);
-                    const key = 'tasks_' + d.getFullYear() + '-' +
-                        String(d.getMonth() + 1).padStart(2, '0') + '-' +
-                        String(d.getDate()).padStart(2, '0');
+                    const key = window.EduDates && typeof EduDates.toDateKey === 'function'
+                        ? EduDates.toDateKey(d)
+                        : ('tasks_' + d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'));
 
                     const isFuture = d > today;
-                    let dayTasks = [];
-                    try {
-                        dayTasks = JSON.parse(localStorage.getItem(key) || '[]');
-                    } catch (e) { dayTasks = []; }
+                    const dayTasks = window.EduStorage ? EduStorage.get(key, []) : JSON.parse(localStorage.getItem(key) || '[]');
 
                     if (isFuture) {
                         planned.push(dayTasks.length > 0 ? 100 : null);
@@ -765,15 +775,12 @@
                     d.setDate(monday.getDate() + i);
                     labels.push(dayNames[i]);
 
-                    const key = 'tasks_' + d.getFullYear() + '-' +
-                        String(d.getMonth() + 1).padStart(2, '0') + '-' +
-                        String(d.getDate()).padStart(2, '0');
+                    const key = window.EduDates && typeof EduDates.toDateKey === 'function'
+                        ? EduDates.toDateKey(d)
+                        : ('tasks_' + d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'));
 
                     const isFuture = d > today;
-                    let dayTasks = [];
-                    try {
-                        dayTasks = JSON.parse(localStorage.getItem(key) || '[]');
-                    } catch (e) { dayTasks = []; }
+                    const dayTasks = window.EduStorage ? EduStorage.get(key, []) : JSON.parse(localStorage.getItem(key) || '[]');
 
                     if (isFuture) {
                         planned.push(dayTasks.length > 0 ? 100 : null);
@@ -790,65 +797,70 @@
             const topicPct = getSubjectTopicPercent();
             const topicMastery = labels.map(() => topicPct);
 
-            // Destroy the old chart before creating a new one (avoids canvas conflicts)
-            if (chart) chart.destroy();
-            const ctx = document.getElementById('progressChart').getContext('2d');
-            chart = new Chart(ctx, {
-                type: 'line',
-                data: {
-                    labels,
-                    datasets: [
-                        {
-                            label: 'Tasks Planned (Target 100%)',
-                            data: planned,
-                            borderColor: '#4338ca',
-                            backgroundColor: 'rgba(67,56,202,0.08)',
-                            tension: 0.3,
-                            pointRadius: timeframe === 'month' ? 2 : 4,
-                            fill: true,
-                            spanGaps: false
-                        },
-                        {
-                            label: 'Tasks Completed (%)',
-                            data: actual,
-                            borderColor: '#059669',
-                            backgroundColor: 'rgba(5,150,105,0.08)',
-                            tension: 0.3,
-                            pointRadius: timeframe === 'month' ? 2 : 4,
-                            fill: true,
-                            spanGaps: false
-                        },
-                        {
-                            label: `Current Topic Progress (${topicPct}%)`,
-                            data: topicMastery,
-                            borderColor: '#7c3aed',
-                            backgroundColor: 'rgba(124,58,237,0.08)',
-                            tension: 0.3,
-                            pointRadius: 0,
-                            borderDash: [6, 4],
-                            fill: false
-                        }
-                    ]
+            const datasets = [
+                {
+                    label: 'Tasks Planned (Target 100%)',
+                    data: planned,
+                    borderColor: '#4338ca',
+                    backgroundColor: 'rgba(67,56,202,0.08)',
+                    tension: 0.3,
+                    pointRadius: timeframe === 'month' ? 2 : 4,
+                    fill: true,
+                    spanGaps: false
                 },
-                options: {
-                    responsive: true,
-                    maintainAspectRatio: false,
-                    plugins: {
-                        // Chart.js' own legend is hidden — an HTML legend below the
-                        // title keeps the three labels together on one line.
-                        legend: { display: false }
-                    },
-                    scales: {
-                        x: { grid: { color: '#e2e8f0' }, ticks: { color: '#64748b' } },
-                        y: {
-                            grid: { color: '#e2e8f0' },
-                            ticks: { color: '#64748b' },
-                            min: 0,
-                            max: 100  // Y-axis is always 0–100 (percentage)
+                {
+                    label: 'Tasks Completed (%)',
+                    data: actual,
+                    borderColor: '#059669',
+                    backgroundColor: 'rgba(5,150,105,0.08)',
+                    tension: 0.3,
+                    pointRadius: timeframe === 'month' ? 2 : 4,
+                    fill: true,
+                    spanGaps: false
+                },
+                {
+                    label: `Current Topic Progress (${topicPct}%)`,
+                    data: topicMastery,
+                    borderColor: '#7c3aed',
+                    backgroundColor: 'rgba(124,58,237,0.08)',
+                    tension: 0.3,
+                    pointRadius: 0,
+                    borderDash: [6, 4],
+                    fill: false
+                }
+            ];
+
+            const canvas = document.getElementById('progressChart');
+            if (!canvas) return;
+
+            // In-place chart update avoids canvas tearing & flicker
+            if (chart) {
+                chart.data.labels = labels;
+                chart.data.datasets = datasets;
+                chart.update('none');
+            } else {
+                const ctx = canvas.getContext('2d');
+                chart = new Chart(ctx, {
+                    type: 'line',
+                    data: { labels, datasets },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: {
+                            legend: { display: false }
+                        },
+                        scales: {
+                            x: { grid: { color: '#e2e8f0' }, ticks: { color: '#64748b' } },
+                            y: {
+                                grid: { color: '#e2e8f0' },
+                                ticks: { color: '#64748b' },
+                                min: 0,
+                                max: 100
+                            }
                         }
                     }
-                }
-            });
+                });
+            }
 
             renderChartLegend();
         }

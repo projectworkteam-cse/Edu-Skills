@@ -8,12 +8,15 @@
 <script src="js/services/sync-shards.js"></script>
 <script src="js/domain/dates.js"></script>
 <script src="js/services/storage.js"></script>
+<script src="js/lib/ui.js"></script>
 <script src="js/env.js"></script>
 <script src="js/eduskill-sync.js"></script>
 
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>EDU-SKILL'S AI - Progress Tracker</title>
+    <link rel="stylesheet" href="css/base.css">
+    <link rel="stylesheet" href="css/components.css">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css">
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.2/dist/chart.umd.min.js"></script>
     <style>
@@ -348,34 +351,39 @@
                 data.push(doneCnt);
             }
 
-            if (chart) chart.destroy();
-            const ctx = document.getElementById('weeklyHoursChart').getContext('2d');
-            chart = new Chart(ctx, {
-                type: 'bar',
-                data: {
-                    labels,
-                    datasets: [{
-                        label: 'Tasks Completed',
-                        data,
-                        backgroundColor: '#4338ca',
-                        borderRadius: 6
-                    }]
-                },
-                options: {
-                    responsive: true, maintainAspectRatio: false,
-                    plugins: { legend: { display: false } },
-                    scales: {
-                        x: { grid: { display: false }, ticks: { color: '#64748b' } },
-                        y: { grid: { color: '#e2e8f0' }, beginAtZero: true, ticks: { color: '#64748b', stepSize: 1 } }
+            if (chart) {
+                chart.data.labels = labels;
+                chart.data.datasets[0].data = data;
+                chart.update('none');
+            } else {
+                const ctx = document.getElementById('weeklyHoursChart').getContext('2d');
+                chart = new Chart(ctx, {
+                    type: 'bar',
+                    data: {
+                        labels,
+                        datasets: [{
+                            label: 'Tasks Completed',
+                            data,
+                            backgroundColor: '#4338ca',
+                            borderRadius: 6
+                        }]
+                    },
+                    options: {
+                        responsive: true, maintainAspectRatio: false,
+                        plugins: { legend: { display: false } },
+                        scales: {
+                            x: { grid: { display: false }, ticks: { color: '#64748b' } },
+                            y: { grid: { color: '#e2e8f0' }, beginAtZero: true, ticks: { color: '#64748b', stepSize: 1 } }
+                        }
                     }
-                }
-            });
+                });
+            }
         }
 
         // ── Subject Topic Chart ───────────────────────────────────────────────
         // Horizontal stacked bar chart: one bar per subject, split into
         // "Completed" (purple) and "Remaining" (grey) topic counts.
-        let subjectChart;
+        let subjectChart = null;
         function renderSubjectChart() {
             const subjects = JSON.parse(localStorage.getItem('subjects') || '[]');
             const canvas   = document.getElementById('subjectTopicChart');
@@ -394,60 +402,67 @@
                 remaining.push(topics.length - d);
             });
 
-            if (subjectChart) subjectChart.destroy();
-            subjectChart = new Chart(canvas.getContext('2d'), {
-                type: 'bar',
-                data: {
-                    labels: names,
-                    datasets: [
-                        {
-                            label: 'Completed Topics',
-                            data: done,
-                            backgroundColor: '#7c3aed',
-                            borderRadius: 6,
-                            barThickness: 20
-                        },
-                        {
-                            label: 'Remaining Topics',
-                            data: remaining,
-                            backgroundColor: '#e2e8f0',
-                            borderRadius: 6,
-                            barThickness: 20
-                        }
-                    ]
+            const datasets = [
+                {
+                    label: 'Completed Topics',
+                    data: done,
+                    backgroundColor: '#7c3aed',
+                    borderRadius: 6,
+                    barThickness: 20
                 },
-                options: {
-                    indexAxis: 'y',
-                    responsive: true,
-                    maintainAspectRatio: false,
-                    plugins: {
-                        legend: { labels: { color: '#64748b', font: { size: 12 }, boxWidth: 12 } },
-                        tooltip: {
-                            callbacks: {
-                                afterBody: (items) => {
-                                    const d = items[0].dataset.data[items[0].dataIndex];
-                                    const r = remaining[items[0].dataIndex];
-                                    const t = d + r;
-                                    return t > 0 ? Math.round(d / t * 100) + '% of topics done' : 'No topics yet';
+                {
+                    label: 'Remaining Topics',
+                    data: remaining,
+                    backgroundColor: '#e2e8f0',
+                    borderRadius: 6,
+                    barThickness: 20
+                }
+            ];
+
+            if (subjectChart) {
+                subjectChart.data.labels = names;
+                subjectChart.data.datasets = datasets;
+                subjectChart.update('none');
+            } else {
+                subjectChart = new Chart(canvas.getContext('2d'), {
+                    type: 'bar',
+                    data: {
+                        labels: names,
+                        datasets
+                    },
+                    options: {
+                        indexAxis: 'y',
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: {
+                            legend: { labels: { color: '#64748b', font: { size: 12 }, boxWidth: 12 } },
+                            tooltip: {
+                                callbacks: {
+                                    afterBody: (items) => {
+                                        const d = items[0].dataset.data[items[0].dataIndex];
+                                        const r = remaining[items[0].dataIndex];
+                                        const t = d + r;
+                                        return t > 0 ? Math.round(d / t * 100) + '% of topics done' : 'No topics yet';
+                                    }
                                 }
                             }
-                        }
-                    },
-                    scales: {
-                        x: {
-                            stacked: true,
-                            beginAtZero: true,
-                            grid: { color: '#e2e8f0' },
-                            ticks: { color: '#64748b', stepSize: 1, precision: 0 }
                         },
-                        y: {
-                            stacked: true,
-                            grid: { display: false },
-                            ticks: { color: '#334155', font: { size: 12 } }
+                        scales: {
+                            x: {
+                                stacked: true,
+                                beginAtZero: true,
+                                grid: { color: '#e2e8f0' },
+                                ticks: { color: '#64748b', stepSize: 1, precision: 0 }
+                            },
+                            y: {
+                                stacked: true,
+                                grid: { display: false },
+                                ticks: { color: '#334155', font: { size: 12 } }
+                            }
                         }
                     }
-                }
-            });
+                });
+            }
         }
 
         // ── Init ──────────────────────────────────────────────────────────────

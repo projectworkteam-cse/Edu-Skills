@@ -12,6 +12,7 @@
 <script src="js/domain/tasks.js"></script>
 <script src="js/services/storage.js"></script>
 <script src="js/services/ai-client.js"></script>
+<script src="js/lib/ui.js"></script>
 <script src="js/env.js"></script>
 <script src="js/eduskill-sync.js"></script>
 
@@ -19,6 +20,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>EDU-SKILL'S AI</title>
 
+    <link rel="stylesheet" href="css/base.css">
+    <link rel="stylesheet" href="css/components.css">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css">
 
     <style>
@@ -2189,9 +2192,18 @@ INSTRUCTIONS:
             }
         }
 
-        function clearChatHistory() {
+        async function clearChatHistory() {
             if (chatHistory.length === 0) return;
-            if (!confirm('Are you sure you want to clear your AI chat history?')) return;
+            const confirmed = window.EduUI && typeof EduUI.confirmDialog === 'function'
+                ? await EduUI.confirmDialog({
+                    title: 'Clear Chat History',
+                    message: 'Are you sure you want to clear your AI chat history?',
+                    confirmLabel: 'Clear Chat',
+                    cancelLabel: 'Cancel',
+                    isDanger: true
+                })
+                : confirm('Are you sure you want to clear your AI chat history?');
+            if (!confirmed) return;
             chatHistory = [];
             try {
                 localStorage.removeItem(CHAT_STORAGE_KEY);
@@ -2322,7 +2334,11 @@ INSTRUCTIONS:
             if (!message) return;
 
             if (message.length > 1000) {
-                alert('Please limit your message to 1,000 characters for optimal AI assistance.');
+                if (window.EduUI && typeof EduUI.toast === 'function') {
+                    EduUI.toast('Please limit your message to 1,000 characters for optimal AI assistance.', 'warning');
+                } else {
+                    alert('Please limit your message to 1,000 characters for optimal AI assistance.');
+                }
                 return;
             }
 

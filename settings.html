@@ -5,12 +5,17 @@
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
+<script src="js/services/sync-shards.js"></script>
+<script src="js/services/storage.js"></script>
+<script src="js/lib/ui.js"></script>
 <script src="js/env.js"></script>
 <script src="js/eduskill-sync.js"></script>
 
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>EDU-SKILL'S AI - Workspace Settings</title>
+    <link rel="stylesheet" href="css/base.css">
+    <link rel="stylesheet" href="css/components.css">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css">
     <style>
         :root {
@@ -949,7 +954,16 @@
                 return;
             }
 
-            if (!confirm('FINAL WARNING: This will permanently delete your account, subjects, exams, and notes. This cannot be undone. Proceed?')) {
+            const confirmedDelete = window.EduUI && typeof EduUI.confirmDialog === 'function'
+                ? await EduUI.confirmDialog({
+                    title: 'Delete Account',
+                    message: 'FINAL WARNING: This will permanently delete your account, subjects, exams, and notes. This cannot be undone. Proceed?',
+                    confirmLabel: 'Permanently Delete',
+                    cancelLabel: 'Cancel',
+                    isDanger: true
+                })
+                : confirm('FINAL WARNING: This will permanently delete your account, subjects, exams, and notes. This cannot be undone. Proceed?');
+            if (!confirmedDelete) {
                 return;
             }
 
@@ -974,7 +988,12 @@
 
                 await user.delete();
 
-                alert('Your account and all associated data have been permanently deleted.');
+                if (window.EduUI && typeof EduUI.toast === 'function') {
+                    EduUI.toast('Your account and all associated data have been permanently deleted.', 'info');
+                    await new Promise(r => setTimeout(r, 1200));
+                } else {
+                    alert('Your account and all associated data have been permanently deleted.');
+                }
                 (window.top || window).location.href = 'loginform.html';
             } catch (err) {
                 console.error('[settings] Account deletion error:', err);
@@ -987,7 +1006,16 @@
         }
 
         async function clearAllData() {
-            if (!confirm('Are you sure you want to reset all stored subjects, exams, and settings? This will clear all local study data for your account.')) return;
+            const confirmedReset = window.EduUI && typeof EduUI.confirmDialog === 'function'
+                ? await EduUI.confirmDialog({
+                    title: 'Reset Study Data',
+                    message: 'Are you sure you want to reset all stored subjects, exams, and settings? This will clear all local study data for your account.',
+                    confirmLabel: 'Reset Data',
+                    cancelLabel: 'Cancel',
+                    isDanger: true
+                })
+                : confirm('Are you sure you want to reset all stored subjects, exams, and settings? This will clear all local study data for your account.');
+            if (!confirmedReset) return;
 
             try {
                 if (typeof window.eduskillResetWorkspace === 'function') {

@@ -26,6 +26,7 @@ function keyPool() {
 let next = 0; // ponytail: round-robin pointer is per instance; fine for a small key pool.
 
 module.exports = async function handler(req, res) {
+  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
   if (req.method !== 'POST') { res.setHeader('Allow', 'POST'); return err(res, 405, 'method_not_allowed', 'Only POST is supported.'); }
 
   let user;
