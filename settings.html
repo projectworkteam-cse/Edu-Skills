@@ -720,7 +720,7 @@
             }
 
             if (window.parent && window.parent !== window) {
-                window.parent.postMessage({ type: 'profile-updated', userName: name }, '*');
+                window.parent.postMessage({ type: 'profile-updated', userName: name }, location.origin);
             }
 
             if (ok) {

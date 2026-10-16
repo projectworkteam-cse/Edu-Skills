@@ -1506,7 +1506,7 @@
                             </div>
                             <span class="subject-title">${esc(slot.subject)}</span>
                             <div class="cell-topic-text" title="${esc(topic)}"><i class="fas fa-book-open" style="font-size:10px;opacity:0.7;"></i> ${esc(topic)}</div>
-                            <span class="priority-badge ${diffClass}">${diff}</span>
+                            <span class="priority-badge ${esc(diffClass)}">${esc(diff)}</span>
                             ${examBadge}
                         </td>
                     `;

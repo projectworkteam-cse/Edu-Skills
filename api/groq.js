@@ -1,172 +1,97 @@
-// ══════════════════════════════════════════════════════════════════════════════
-// EDU-SKILL AI — SECURE SERVER-SIDE GROQ PROXY (/api/groq)
-// ══════════════════════════════════════════════════════════════════════════════
+// api/groq.js - authenticated, quota-limited Groq proxy.
+// The browser sends { feature, messages, temperature? }. Model, token ceiling and reasoning effort are decided HERE.
+const { verifyFirebaseUser } = require('../lib/auth');
+const { rateLimit } = require('../lib/rate-limit');
 
-// Model allow-list to prevent arbitrary model usage or excessive token charges
-const ALLOWED_MODELS = new Set([
-  'openai/gpt-oss-120b',
-  'llama-3.3-70b-versatile',
-  'llama-3.1-8b-instant',
-  'llama3-70b-8192',
-  'llama3-8b-8192',
-  'mixtral-8x7b-32768'
-]);
+const MODEL = process.env.GROQ_MODEL || 'openai/gpt-oss-120b';
+const FEATURES = {
+  chat:     { max: 1200, effort: 'low' },
+  tasks:    { max: 1500, effort: 'low' },
+  topics:   { max: 1500, effort: 'low' },
+  quiz:     { max: 3500, effort: 'low' },
+  notes:    { max: 3000, effort: 'low' },
+  insights: { max: 2000, effort: 'low' },
+  coach:    { max: 500,  effort: 'low' },
+  // ponytail: temporary profile so pages cached before the deploy keep working. Remove after 2 weeks (see audit V1-SEC-01).
+  legacy:   { max: 1500, effort: 'low' }
+};
+const MAX_BODY_CHARS = 50 * 1024;
 
-const DEFAULT_MODEL = 'openai/gpt-oss-120b';
-const MAX_PAYLOAD_BYTES = 50 * 1024; // 50 KB
-const MAX_TOKENS_CEILING = 2048;
+const err = (res, status, code, message) => res.status(status).json({ error: { code, message } });
 
-// Key Pool with rotation index
-// Key Pool with rotation index (patterned after WEBISCRAP KeyManager)
-let currentKeyIndex = 0;
-
-function getGroqKeyPool() {
-  const pool = [];
-  const addKey = (k) => {
-    if (k && typeof k === 'string') {
-      const clean = k.trim();
-      if (clean && !pool.includes(clean)) {
-        pool.push(clean);
-      }
-    }
-  };
-
-  // Pure environment variables (ZERO keys hardcoded in codebase)
-  if (process.env.GROQ_API_KEY) addKey(process.env.GROQ_API_KEY);
-  if (process.env.GROQ_API_KEYS) {
-    process.env.GROQ_API_KEYS.split(',').forEach(addKey);
-  }
-
-  return pool;
+function keyPool() {
+  const all = [process.env.GROQ_API_KEY, ...(process.env.GROQ_API_KEYS || '').split(',')];
+  return [...new Set(all.map(k => (k || '').trim()).filter(Boolean))];
 }
+let next = 0; // ponytail: round-robin pointer is per instance; fine for a small key pool.
 
 module.exports = async function handler(req, res) {
-  // Enforce POST method
-  if (req.method !== 'POST') {
-    res.setHeader('Allow', 'POST');
-    return res.status(405).json({
-      error: { message: 'Method Not Allowed. Only POST is supported.', code: 'method_not_allowed' }
-    });
+  if (req.method !== 'POST') { res.setHeader('Allow', 'POST'); return err(res, 405, 'method_not_allowed', 'Only POST is supported.'); }
+
+  let user;
+  try { user = await verifyFirebaseUser(req); }
+  catch (e) { console.error('[groq] auth backend error:', e.message); return err(res, 503, 'auth_unavailable', 'Sign-in check is unavailable. Try again shortly.'); }
+  if (!user) return err(res, 401, 'unauthorized', 'Please sign in again.');
+  if (!user.emailVerified) return err(res, 403, 'email_unverified', 'Verify your email to use AI features.');
+
+  if (!rateLimit(`m:${user.uid}`, 20, 60_000) || !rateLimit(`d:${user.uid}`, 300, 86_400_000)) {
+    res.setHeader('Retry-After', '30');
+    return err(res, 429, 'rate_limited', 'AI limit reached. Please wait a moment and try again.');
   }
 
-  // Verify Authorization Bearer token header
-  const authHeader = req.headers['authorization'] || '';
-  if (!authHeader.startsWith('Bearer ')) {
-    return res.status(401).json({
-      error: { message: 'Unauthorized. Missing or invalid Bearer token.', code: 'unauthorized' }
-    });
-  }
+  let body;
+  try { body = typeof req.body === 'string' ? JSON.parse(req.body) : req.body; } catch { body = null; }
+  if (!body || typeof body !== 'object') return err(res, 400, 'bad_json', 'Request body must be JSON.');
+  if (JSON.stringify(body).length > MAX_BODY_CHARS) return err(res, 413, 'too_large', 'Request is too large.');
 
-  const idToken = authHeader.slice(7).trim();
-  if (!idToken) {
-    return res.status(401).json({
-      error: { message: 'Unauthorized. Empty ID token provided.', code: 'unauthorized' }
-    });
-  }
+  const profile = body.feature === undefined ? FEATURES.legacy : FEATURES[body.feature];
+  if (!profile) return err(res, 400, 'bad_feature', 'Unknown AI feature.');
+  if (!Array.isArray(body.messages) || body.messages.length === 0) return err(res, 400, 'bad_messages', '"messages" must be a non-empty array.');
 
-  // Validate payload size
-  const bodyString = typeof req.body === 'string' ? req.body : JSON.stringify(req.body || {});
-  if (bodyString.length > MAX_PAYLOAD_BYTES) {
-    return res.status(413).json({
-      error: { message: 'Payload Too Large. Maximum allowed request size is 50 KB.', code: 'payload_too_large' }
-    });
-  }
+  const messages = body.messages.slice(-20).map((m, i) => ({
+    role: m && m.role === 'assistant' ? 'assistant' : (m && m.role === 'system' && i === 0 ? 'system' : 'user'), // system only allowed first
+    content: String((m && m.content) ?? '').slice(0, 10000)
+  }));
+  const temperature = typeof body.temperature === 'number' ? Math.min(Math.max(body.temperature, 0), 1.2) : 0.6;
 
-  const payload = typeof req.body === 'object' && req.body !== null ? req.body : JSON.parse(bodyString);
+  const keys = keyPool();
+  if (!keys.length) return err(res, 503, 'no_keys', 'AI service is not configured.');
 
-  // Validate messages array
-  if (!Array.isArray(payload.messages) || payload.messages.length === 0) {
-    return res.status(400).json({
-      error: { message: 'Bad Request. "messages" must be a non-empty array.', code: 'invalid_messages' }
-    });
-  }
+  const payload = { model: MODEL, messages, temperature, max_completion_tokens: profile.max, reasoning_effort: profile.effort };
+  let last = { status: 502, message: 'AI service failed.' };
 
-  // Model validation & sanitation
-  let targetModel = String(payload.model || DEFAULT_MODEL).trim();
-  if (!ALLOWED_MODELS.has(targetModel)) {
-    targetModel = DEFAULT_MODEL;
-  }
-
-  // Token boundary
-  const requestedTokens = Number(payload.max_tokens) || 1024;
-  const maxTokens = Math.min(Math.max(requestedTokens, 100), MAX_TOKENS_CEILING);
-
-  const cleanPayload = {
-    model: targetModel,
-    messages: payload.messages.slice(-20).map(m => ({
-      role: m.role === 'assistant' ? 'assistant' : m.role === 'system' ? 'system' : 'user',
-      content: String(m.content || '').slice(0, 10000)
-    })),
-    temperature: typeof payload.temperature === 'number' ? Math.max(0, Math.min(payload.temperature, 1.5)) : 0.7,
-    max_tokens: maxTokens
-  };
-
-  const keyPool = getGroqKeyPool();
-  if (keyPool.length === 0) {
-    return res.status(503).json({
-      error: { message: 'Groq AI service has no active API keys configured.', code: 'no_keys_configured' }
-    });
-  }
-
-  let lastStatus = 502;
-  let lastErrorData = null;
-
-  // Genuine Key Rotation: Loop through keys starting from current pointer
-  const totalKeys = keyPool.length;
-  const startIndex = currentKeyIndex % totalKeys;
-
-  for (let attempt = 0; attempt < totalKeys; attempt++) {
-    const keyIndex = (startIndex + attempt) % totalKeys;
-    const currentKey = keyPool[keyIndex];
-
+  for (let i = 0; i < keys.length; i++) {
+    const k = (next + i) % keys.length;
     try {
-      const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 25000); // 25s per key attempt
-
-      const groqResponse = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+      let r = await fetch('https://api.groq.com/openai/v1/chat/completions', {
         method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${currentKey}`,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify(cleanPayload),
-        signal: controller.signal
+        headers: { Authorization: `Bearer ${keys[k]}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+        signal: AbortSignal.timeout(20000)
       });
-
-      clearTimeout(timeout);
-      const data = await groqResponse.json();
-
-      if (groqResponse.ok) {
-        // Successful response - advance round-robin index for fair load distribution
-        currentKeyIndex = (keyIndex + 1) % totalKeys;
-
-        // Verify response content
-        const choice = data.choices?.[0];
-        const content = choice?.message?.content || '';
-        if (!content.trim() && choice?.finish_reason === 'length') {
-          return res.status(502).json({
-            error: { message: 'AI response was truncated due to length limits. Please ask a shorter question.', code: 'response_truncated' }
-          });
-        }
-
-        return res.status(200).json(data);
+      if (r.status === 400) { // some models reject reasoning_effort; retry once without it
+        const { reasoning_effort, ...plain } = payload;
+        r = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${keys[k]}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify(plain),
+          signal: AbortSignal.timeout(20000)
+        });
       }
-
-      // If Rate Limited (429), Unauthorized/Expired (401), or Server Overload (503), rotate to next key
-      lastStatus = groqResponse.status;
-      lastErrorData = data;
-      console.warn(`[Groq Proxy] Key #${keyIndex + 1}/${totalKeys} failed (HTTP ${lastStatus}): ${data.error?.message || 'Rotating'}. Trying next key...`);
-    } catch (err) {
-      const isTimeout = err.name === 'AbortError';
-      lastStatus = isTimeout ? 504 : 502;
-      lastErrorData = { error: { message: isTimeout ? 'Request timed out.' : err.message } };
-      console.warn(`[Groq Proxy] Key #${keyIndex + 1}/${totalKeys} error: ${err.message}. Trying next key...`);
+      const data = await r.json().catch(() => ({}));
+      if (r.ok) {
+        next = (k + 1) % keys.length;
+        const choice = data.choices?.[0];
+        const content = (choice?.message?.content || '').trim();
+        if (!content) return err(res, 502, choice?.finish_reason === 'length' ? 'truncated' : 'empty', 'The AI returned no answer. Please retry.');
+        return res.status(200).json({ choices: [{ message: { content }, finish_reason: choice.finish_reason }], usage: data.usage });
+      }
+      last = { status: r.status, message: 'AI provider error.' };
+      console.warn(`[groq] key ${k + 1}/${keys.length} -> HTTP ${r.status}`); // never log the key or the prompt
+      if (r.status !== 429 && r.status < 500 && r.status !== 401) break;      // client-side error: rotating keys will not help
+    } catch (e) {
+      last = { status: e.name === 'TimeoutError' ? 504 : 502, message: e.name === 'TimeoutError' ? 'AI request timed out.' : 'AI service unreachable.' };
     }
   }
-
-  // All keys in the pool failed or were rate-limited
-  const errorMsg = lastErrorData?.error?.message || 'All Groq AI API keys are currently rate-limited or busy. Please retry in a few seconds.';
-  return res.status(lastStatus >= 400 && lastStatus < 600 ? lastStatus : 502).json({
-    error: { message: errorMsg, code: 'all_groq_keys_exhausted' }
-  });
+  return err(res, last.status >= 400 && last.status < 600 ? last.status : 502, 'ai_failed', last.message);
 };

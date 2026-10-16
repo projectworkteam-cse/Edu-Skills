@@ -505,20 +505,6 @@
           }
         }
 
-        // Dual dispatch notification via Brevo proxy
-        const targetEmail = unverifiedUserPending ? unverifiedUserPending.email : unverifiedEmailPending;
-        if (targetEmail) {
-          fetch('/api/send-email', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              to: targetEmail,
-              subject: "EDU-SKILL'S AI — Verification Email Link",
-              type: 'verification'
-            })
-          }).catch(() => {});
-        }
-
         statusEl.innerHTML = 'Verification email sent! <strong>Important:</strong> Check both your <strong>Inbox</strong> and <strong>Spam / Junk</strong> folder.';
         statusEl.className = 'text-[11px] font-medium text-emerald-700';
 
@@ -581,17 +567,6 @@
 
       try {
         await auth.sendPasswordResetEmail(email);
-
-        // Also dispatch Brevo notification email
-        fetch('/api/send-email', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            to: email,
-            subject: "EDU-SKILL'S AI — Password Reset Request",
-            type: 'reset'
-          })
-        }).catch(() => {});
 
         statusEl.innerHTML = 'Password reset instructions dispatched! <strong>Please check both your Inbox and Spam / Junk folder.</strong>';
         statusEl.className = 'p-3 rounded-lg text-xs text-center font-medium bg-green-50 text-green-700 border border-green-200';
@@ -849,19 +824,6 @@
         } catch (mailErr) {
           console.warn('Verification email send issue:', mailErr);
         }
-
-        // Dual dispatch notification via Brevo proxy
-        try {
-          await fetch('/api/send-email', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              to: email,
-              subject: "Welcome to EDU-SKILL'S AI — Account Verification",
-              type: 'verification'
-            })
-          });
-        } catch (_) {}
 
         // Sign out unverified account so student must verify first
         await auth.signOut();

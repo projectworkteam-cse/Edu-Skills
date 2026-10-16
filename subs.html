@@ -812,7 +812,7 @@ Only JSON.`;
                 <article class="subject-card">
                     <div>
                         <h3 style="font-size:16px;">📚 ${escapeHTML(subject.name)}</h3>
-                        <span class="difficulty-badge ${subject.difficulty || 'Medium'}">${subject.difficulty || 'Medium'}</span>
+                        <span class="difficulty-badge ${escapeHTML(subject.difficulty || 'Medium')}">${escapeHTML(subject.difficulty || 'Medium')}</span>
 
                         <p style="margin-top:10px; font-weight:bold; color:#4f46e5;">
                             ⏱ Total Study Time : ${totalText}

@@ -632,8 +632,8 @@
                         <span class="sev-badge ${String(w.severity).toLowerCase()}">${esc(w.severity)}</span>
                     </div>
                     <div class="weak-bar-row">
-                        <div class="weak-bar-bg"><div class="weak-bar-fill" style="width:${w.score}%;"></div></div>
-                        <span class="weak-pct">${w.score}%</span>
+                        <div class="weak-bar-bg"><div class="weak-bar-fill" style="width:${Math.max(0, Math.min(100, Number(w.score) || 0))}%;"></div></div>
+                        <span class="weak-pct">${esc(w.score)}%</span>
                     </div>
                     ${chips ? `<div class="weak-factors">${chips}</div>` : ''}
                     ${tip ? `<div class="weak-ai"><i class="fas fa-lightbulb"></i><span>${esc(tip)}${w.action ? ' <b>Next step:</b> ' + esc(w.action) : ''}</span></div>` : ''}
