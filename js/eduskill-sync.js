@@ -1,9 +1,10 @@
 // ══════════════════════════════════════════════════════════════════════════════
-// EDU-SKILL AI — UNIFIED USER STORAGE & CLOUD SYNC ADAPTER (v4)
+// EDU-SKILL AI — HARDENED STORAGE & CLOUD SHARD SYNC ADAPTER (Phase 2)
 // ══════════════════════════════════════════════════════════════════════════════
-
 (function () {
   'use strict';
+
+  const isShell = (window === window.top);
 
   // 1. Firebase Initialization
   const CONFIG = window.FIREBASE_CONFIG || {
@@ -20,7 +21,7 @@
     try {
       firebase.initializeApp(CONFIG);
     } catch (e) {
-      console.warn('EduSkill Firebase init warning:', e.message);
+      console.warn('[sync] Firebase init warning:', e.message);
     }
   }
 
@@ -29,12 +30,10 @@
   window.eduskillAuth = auth;
   window.eduskillDb = db;
 
-  // 2. Constants & Native Storage Accessors (SYNC-01)
+  // 2. Constants & Native Storage Accessors
   const ACTIVE = '__eduskill_active_uid';
   const PREFIX = 'eduskill_user_';
-  const EXCLUDE_CLOUD = new Set(['groq_api_key']);
 
-  // Capture native methods BEFORE any prototype patching
   const nativeGet = Storage.prototype.getItem;
   const nativeSet = Storage.prototype.setItem;
   const nativeRemove = Storage.prototype.removeItem;
@@ -43,36 +42,87 @@
   const nativeLengthDesc = Object.getOwnPropertyDescriptor(Storage.prototype, 'length');
   const nativeLengthGetter = nativeLengthDesc && nativeLengthDesc.get ? nativeLengthDesc.get : null;
 
+  const channel = (typeof BroadcastChannel !== 'undefined' && typeof window !== 'undefined') ? new BroadcastChannel('eduskill') : null;
+
   let uid = '';
-  try {
-    uid = nativeGet.call(window.localStorage, ACTIVE) || '';
-  } catch (_) {}
+  // V1-AUTH-05: Shell does NOT trust localStorage cached UID on boot to avoid stale data flash
+  if (!isShell) {
+    try {
+      uid = nativeGet.call(window.localStorage, ACTIVE) || '';
+    } catch (_) {}
+  }
 
   let syncing = false;
   let pendingSyncAfterInflight = false;
   let hydrated = false;
   let isDirty = false;
   let lastSyncTime = null;
-  let syncStatus = 'synced'; // 'synced' | 'syncing' | 'dirty' | 'error'
+  let syncStatus = 'synced'; // 'synced' | 'syncing' | 'dirty' | 'offline' | 'error'
+  const dirtyShards = new Set();
 
   function physicalKey(key) {
     return PREFIX + uid + '__' + key;
   }
 
-  function getRawLength() {
-    if (nativeLengthGetter) {
-      try {
-        return nativeLengthGetter.call(window.localStorage);
-      } catch (_) {}
-    }
+  function metaKey() {
+    return '__eduskill_meta__' + uid;
+  }
+
+  function bare(key) {
+    return String(key || '').replace(/^eduskill_user_.*?__/, '');
+  }
+
+  function getLocalMeta() {
+    if (!uid) return {};
     try {
-      return Object.keys(window.localStorage).length;
+      const raw = nativeGet.call(window.localStorage, metaKey());
+      return raw ? JSON.parse(raw) : {};
     } catch (_) {
-      return 0;
+      return {};
     }
   }
 
-  // Safe logical key collector avoiding recursive Storage.prototype.key calls (SYNC-01)
+  function setLocalMeta(meta) {
+    if (!uid) return;
+    try {
+      nativeSet.call(window.localStorage, metaKey(), JSON.stringify(meta));
+    } catch (_) {}
+  }
+
+  function markKeyUpdated(key) {
+    if (!uid) return;
+    const meta = getLocalMeta();
+    meta[key] = Date.now();
+    setLocalMeta(meta);
+  }
+
+  // Shard allow-list (V1-DATA-03)
+  const CORE = new Set([
+    'subjects', 'exams', 'timetable_preferences', 'tasksCompletedTotal',
+    'reminders', 'pref_exam_alerts', 'pref_study_reminder', 'schemaVersion',
+    'userRole', 'userName', 'studentId', 'userPhoto'
+  ]);
+  const QUIZ = new Set(['quizHistory', 'weakTopics', 'examReadiness']);
+  const TIMETABLE = new Set(['cached_timetable', 'timetable', 'timetable_created_at', 'timetable_input_signature']);
+  const NOTES = new Set(['savedNotes']);
+
+  function docFor(key) {
+    if (CORE.has(key)) return 'core';
+    if (QUIZ.has(key)) return 'quiz';
+    if (TIMETABLE.has(key)) return 'timetable';
+    if (NOTES.has(key)) return 'notes';
+    const m = /^tasks_(\d{4})-(\d{2})-\d{2}$/.exec(key);
+    if (m) return `tasks_${m[1]}_${m[2]}`;
+    return null; // Local-only (chat history, alert stamps, etc.)
+  }
+
+  function getRawLength() {
+    if (nativeLengthGetter) {
+      try { return nativeLengthGetter.call(window.localStorage); } catch (_) {}
+    }
+    try { return Object.keys(window.localStorage).length; } catch (_) { return 0; }
+  }
+
   function logicalKeys() {
     if (!uid) return [];
     const p = PREFIX + uid + '__';
@@ -106,6 +156,9 @@
       error: errorMsg || null,
       uid: uid
     });
+    if (channel) {
+      channel.postMessage({ type: 'sync_status', status, lastSyncTime, error: errorMsg || null, uid });
+    }
   }
 
   // 3. Storage Prototype Interceptors (Strict Per-User Isolation)
@@ -133,10 +186,23 @@
       try { uid = nativeGet.call(window.localStorage, ACTIVE) || ''; } catch (_) {}
     }
     if (!uid) return nativeSet.call(this, kStr, valStr);
+
     const r = nativeSet.call(this, physicalKey(kStr), valStr);
+    markKeyUpdated(kStr);
+
+    const shard = docFor(kStr);
+    if (shard) dirtyShards.add(shard);
+
     isDirty = true;
     emitSyncStatus('dirty');
-    scheduleSync();
+
+    if (channel) {
+      channel.postMessage({ type: 'storage_change', key: kStr, time: Date.now() });
+    }
+
+    if (isShell) {
+      scheduleSync();
+    }
     return r;
   };
 
@@ -151,23 +217,36 @@
       try { uid = nativeGet.call(window.localStorage, ACTIVE) || ''; } catch (_) {}
     }
     if (!uid) return nativeRemove.call(this, kStr);
+
     const r = nativeRemove.call(this, physicalKey(kStr));
+    markKeyUpdated(kStr);
+
+    const shard = docFor(kStr);
+    if (shard) dirtyShards.add(shard);
+
     isDirty = true;
     emitSyncStatus('dirty');
-    scheduleSync();
+
+    if (channel) {
+      channel.postMessage({ type: 'storage_remove', key: kStr, time: Date.now() });
+    }
+
+    if (isShell) {
+      scheduleSync();
+    }
     return r;
   };
 
   Storage.prototype.clear = function () {
     if (this !== window.localStorage || !uid) return nativeClear.call(this);
     logicalKeys().forEach(k => {
-      try {
-        nativeRemove.call(this, physicalKey(k));
-      } catch (_) {}
+      try { nativeRemove.call(this, physicalKey(k)); } catch (_) {}
+      const shard = docFor(k);
+      if (shard) dirtyShards.add(shard);
     });
     isDirty = true;
     emitSyncStatus('dirty');
-    scheduleSync();
+    if (isShell) scheduleSync();
   };
 
   Storage.prototype.key = function (index) {
@@ -192,9 +271,9 @@
     return oldObjectKeys(obj);
   };
 
-  // 4. Concurrency-Safe Cloud Sync & Dirty Queue (SYNC-02, SYNC-03, SYNC-04, SYNC-05, SYNC-06)
+  // 4. Concurrency-Safe Sharded Cloud Sync (V1-DATA-01, V1-DATA-02, V1-DATA-03)
   function scheduleSync() {
-    if (!uid || !db || !hydrated) return;
+    if (!isShell || !uid || !db || !hydrated) return;
     if (syncing) {
       pendingSyncAfterInflight = true;
       return;
@@ -203,48 +282,63 @@
     window.__eduskillSyncTimer = setTimeout(syncCloud, 700);
   }
 
-  function collectData() {
-    const data = {};
-    logicalKeys().forEach(k => {
-      if (!EXCLUDE_CLOUD.has(k)) {
-        const v = nativeGet.call(window.localStorage, physicalKey(k));
-        try {
-          data[k] = JSON.parse(v);
-        } catch (_) {
-          data[k] = v;
-        }
-      }
-    });
-    return data;
-  }
-
   async function syncCloud() {
-    if (!uid || !db || !hydrated) return;
+    if (!isShell || !uid || !db || !hydrated) return;
+    if (!navigator.onLine) {
+      emitSyncStatus('offline', 'You appear to be offline. Changes saved locally.');
+      return;
+    }
+
     try {
       syncing = true;
       emitSyncStatus('syncing');
 
-      const dataToSave = collectData();
-      const serialized = JSON.stringify(dataToSave);
+      // Determine which shards are dirty
+      const shardsToSync = dirtyShards.size > 0 ? Array.from(dirtyShards) : ['core', 'quiz', 'timetable', 'notes'];
+      const meta = getLocalMeta();
 
-      // Byte size warning (Firestore 1 MiB limit monitor, SYNC-05)
-      if (serialized.length > 750000) {
-        console.warn('EduSkill storage payload warning: Size (' + serialized.length + ' bytes) approaching 1MB Firestore quota.');
-        safeDispatch('eduskill-quota-warning', { currentBytes: serialized.length, maxBytes: 1048576 });
+      // Collect data by shard
+      const shardBuckets = {};
+      shardsToSync.forEach(s => { shardBuckets[s] = { data: {}, meta: {} }; });
+
+      logicalKeys().forEach(k => {
+        const s = docFor(k);
+        if (s && shardBuckets[s]) {
+          const raw = nativeGet.call(window.localStorage, physicalKey(k));
+          let val = raw;
+          try { val = JSON.parse(raw); } catch (_) {}
+          shardBuckets[s].data[k] = val;
+          shardBuckets[s].meta[k] = meta[k] || Date.now();
+        }
+      });
+
+      // Write each shard WITHOUT merge: true so deleted keys stay deleted (V1-DATA-02)
+      for (const shardId of shardsToSync) {
+        const bucket = shardBuckets[shardId];
+        const shardPayload = {
+          data: bucket.data,
+          meta: bucket.meta,
+          updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+          schemaVersion: 2
+        };
+
+        const jsonStr = JSON.stringify(shardPayload);
+        if (jsonStr.length > 750000) {
+          console.warn(`[sync] Shard ${shardId} size (${jsonStr.length} bytes) approaching 900KB cap.`);
+          safeDispatch('eduskill-quota-warning', { shard: shardId, currentBytes: jsonStr.length, maxBytes: 900000 });
+        }
+
+        await db.collection('users').doc(uid).collection('app').doc(shardId).set(shardPayload);
+        dirtyShards.delete(shardId);
       }
-
-      // Safe merge save so concurrent iframe / tab writes don't clobber each other (SYNC-04)
-      await db.collection('users').doc(uid).collection('app').doc('state').set({
-        data: dataToSave,
-        updatedAt: firebase.firestore.FieldValue.serverTimestamp()
-      }, { merge: true });
 
       lastSyncTime = new Date();
       isDirty = false;
       emitSyncStatus('synced');
     } catch (e) {
-      console.warn('EduSkill cloud sync failed:', e.message);
-      emitSyncStatus('error', e.message);
+      console.warn('[sync] Cloud sync failed:', e.message);
+      const isOffline = !navigator.onLine || e.code === 'unavailable';
+      emitSyncStatus(isOffline ? 'offline' : 'error', e.message);
     } finally {
       syncing = false;
       if (pendingSyncAfterInflight) {
@@ -254,33 +348,121 @@
     }
   }
 
+  function flush() {
+    if (isDirty && isShell) {
+      syncCloud().catch(() => {});
+    }
+  }
+
+  // Immediate flush on hide or close (V1-DATA-04)
+  if (typeof window !== 'undefined') {
+    window.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'hidden') flush();
+    });
+    window.addEventListener('pagehide', flush);
+    window.addEventListener('online', () => {
+      if (isDirty && isShell) scheduleSync();
+    });
+  }
+
+  // 5. Cloud Hydration & Per-Key Newer-Wins Merge (V1-DATA-01, V1-DATA-03, V1-DATA-09)
   async function hydrateCloud(user) {
     if (!user || !db) return;
     const newUid = user.uid;
-    if (uid && uid !== newUid) {
-      hydrated = false;
-    }
     uid = newUid;
     nativeSet.call(window.localStorage, ACTIVE, uid);
 
     try {
-      const snap = await db.collection('users').doc(uid).collection('app').doc('state').get();
-      if (snap.exists && snap.data() && snap.data().data) {
-        const cloudData = snap.data().data;
-        const cloudKeys = new Set(Object.keys(cloudData));
+      const meta = getLocalMeta();
+      let hasShardData = false;
 
-        // Restore cloud keys unless locally marked dirty (SYNC-03)
-        Object.keys(cloudData).forEach(k => {
-          if (!EXCLUDE_CLOUD.has(k)) {
-            const v = typeof cloudData[k] === 'string' ? cloudData[k] : JSON.stringify(cloudData[k]);
-            nativeSet.call(window.localStorage, physicalKey(k), v);
+      // Active monthly task shard id
+      const now = new Date();
+      const pad = (n) => String(n).padStart(2, '0');
+      const activeMonthShard = `tasks_${now.getFullYear()}_${pad(now.getMonth() + 1)}`;
+      const knownShards = ['core', 'quiz', 'timetable', 'notes', activeMonthShard];
+
+      // Read shards
+      for (const shardId of knownShards) {
+        try {
+          const snap = await db.collection('users').doc(uid).collection('app').doc(shardId).get();
+          if (snap.exists) {
+            hasShardData = true;
+            const sData = snap.data() || {};
+            const cloudItems = sData.data || {};
+            const cloudMeta = sData.meta || {};
+            const shardDocAt = sData.updatedAt && typeof sData.updatedAt.toMillis === 'function' ? sData.updatedAt.toMillis() : 0;
+
+            for (const [k, cloudVal] of Object.entries(cloudItems)) {
+              const localAt = meta[k] || 0;
+              const cloudAt = cloudMeta[k] || shardDocAt;
+
+              if (cloudAt > localAt) {
+                // Cloud is newer -> adopt it
+                const v = typeof cloudVal === 'string' ? cloudVal : JSON.stringify(cloudVal);
+                nativeSet.call(window.localStorage, physicalKey(k), v);
+                meta[k] = cloudAt;
+              } else if (localAt > cloudAt) {
+                // Local is newer -> keep local and mark dirty so it pushes up
+                dirtyShards.add(shardId);
+                isDirty = true;
+              }
+            }
           }
-        });
+        } catch (shardErr) {
+          console.warn(`[sync] Could not read shard ${shardId}:`, shardErr.message);
+        }
       }
 
-      // Authoritative profile sync (SYNC-07)
-      const profile = await db.collection('users').doc(uid).get();
-      if (profile.exists) {
+      // Legacy fallback: if shards are empty, import from legacy app/state doc
+      if (!hasShardData) {
+        try {
+          const legacySnap = await db.collection('users').doc(uid).collection('app').doc('state').get();
+          if (legacySnap.exists && legacySnap.data() && legacySnap.data().data) {
+            const legacyData = legacySnap.data().data;
+            for (const [k, v] of Object.entries(legacyData)) {
+              if (docFor(k)) {
+                const s = typeof v === 'string' ? v : JSON.stringify(v);
+                nativeSet.call(window.localStorage, physicalKey(k), s);
+                meta[k] = Date.now();
+                dirtyShards.add(docFor(k));
+              }
+            }
+            isDirty = true;
+            console.log('[sync] Migrated legacy state to shards.');
+          }
+        } catch (_) {}
+      }
+
+      setLocalMeta(meta);
+
+      // Run Schema V1 -> V2 Migration (V1-DATA-09)
+      const currentSchema = parseInt(nativeGet.call(window.localStorage, physicalKey('schemaVersion')) || '1', 10);
+      if (currentSchema < 2) {
+        if (typeof root.EduMigrate !== 'undefined' && typeof root.EduMigrate.migrateV1toV2 === 'function') {
+          try {
+            const subsRaw = nativeGet.call(window.localStorage, physicalKey('subjects'));
+            const examsRaw = nativeGet.call(window.localStorage, physicalKey('exams'));
+            const stateToMigrate = {
+              schemaVersion: currentSchema,
+              subjects: subsRaw ? JSON.parse(subsRaw) : [],
+              exams: examsRaw ? JSON.parse(examsRaw) : []
+            };
+            const migrated = root.EduMigrate.migrateV1toV2(stateToMigrate);
+            nativeSet.call(window.localStorage, physicalKey('subjects'), JSON.stringify(migrated.subjects));
+            nativeSet.call(window.localStorage, physicalKey('exams'), JSON.stringify(migrated.exams));
+            nativeSet.call(window.localStorage, physicalKey('schemaVersion'), '2');
+            dirtyShards.add('core');
+            isDirty = true;
+          } catch (mErr) {
+            console.warn('[sync] Migration error:', mErr.message);
+          }
+        }
+      }
+
+      // Authoritative profile sync
+      const profile = await db.collection('users').doc(uid).get().catch(() => null);
+      if (profile && profile.exists) {
         const p = profile.data();
         const displayName = p.name || user.displayName || (user.email ? user.email.split('@')[0] : 'User');
         const displayEmail = user.email || p.email || '';
@@ -290,43 +472,65 @@
         if (p.username) nativeSet.call(window.localStorage, physicalKey('username'), p.username);
         if (p.course) nativeSet.call(window.localStorage, physicalKey('userRole'), p.course);
         if (p.studentId) nativeSet.call(window.localStorage, physicalKey('studentId'), p.studentId);
-      } else {
-        const displayName = user.displayName || (user.email ? user.email.split('@')[0] : 'User');
-        const displayEmail = user.email || '';
-        const initialProfile = {
-          name: displayName,
-          email: displayEmail,
-          photoURL: user.photoURL || '',
-          createdAt: firebase.firestore.FieldValue.serverTimestamp()
-        };
-        await db.collection('users').doc(uid).set(initialProfile, { merge: true }).catch(() => {});
-        nativeSet.call(window.localStorage, physicalKey('userName'), displayName);
-        nativeSet.call(window.localStorage, physicalKey('userEmail'), displayEmail);
-        if (user.photoURL) nativeSet.call(window.localStorage, physicalKey('userPhoto'), user.photoURL);
       }
+
+      // Prune old alerts & tasks on startup (V1-DATA-08)
+      pruneOldData();
 
       hydrated = true;
       emitSyncStatus('synced');
       safeDispatch('eduskill-cloud-ready', { uid: uid });
+      safeDispatch('eduskill:hydrated', { uid: uid });
 
-      // Drain dirty edits that occurred while hydrating
+      if (channel) {
+        channel.postMessage({ type: 'hydrated', uid });
+      }
+
       if (isDirty) {
         scheduleSync();
       }
-
-      // Reload once in top frame if fresh hydration
-      if (window === window.top && !sessionStorage.getItem('eduskill_hydrated_' + uid)) {
-        sessionStorage.setItem('eduskill_hydrated_' + uid, '1');
-        setTimeout(() => location.reload(), 80);
-      }
     } catch (e) {
-      console.warn('EduSkill cloud load failed:', e.message);
+      console.warn('[sync] Cloud load failed:', e.message);
       hydrated = true;
       emitSyncStatus('error', e.message);
     }
   }
 
-  // 5. Authoritative Profile Update (SYNC-07)
+  // Pruning function (V1-DATA-08)
+  function pruneOldData() {
+    if (!uid) return;
+    const now = Date.now();
+    const rawLen = getRawLength();
+    const toRemove = [];
+
+    for (let i = 0; i < rawLen; i++) {
+      try {
+        const rawK = nativeKey.call(window.localStorage, i);
+        if (!rawK) continue;
+        const k = bare(rawK);
+
+        // Delete shown_alerts_* older than 7 days
+        if (k.startsWith('shown_alerts_')) {
+          toRemove.push(rawK);
+        }
+
+        // Delete daily task keys older than 90 days
+        const m = /^tasks_(\d{4})-(\d{2})-(\d{2})$/.exec(k);
+        if (m) {
+          const taskDate = new Date(`${m[1]}-${m[2]}-${m[3]}T00:00:00`);
+          if (!isNaN(taskDate.getTime()) && (now - taskDate.getTime()) > (90 * 86400000)) {
+            toRemove.push(rawK);
+          }
+        }
+      } catch (_) {}
+    }
+
+    toRemove.forEach(k => {
+      try { nativeRemove.call(window.localStorage, k); } catch (_) {}
+    });
+  }
+
+  // 6. Authoritative Profile Update
   window.eduskillUpdateProfile = async function (fields) {
     if (!uid || !db) return false;
     try {
@@ -349,103 +553,91 @@
       safeDispatch('eduskill-profile-updated', allowed);
       return true;
     } catch (e) {
-      console.warn('Profile update failed:', e.message);
+      console.warn('[sync] Profile update failed:', e.message);
       return false;
     }
   };
 
-  // 6. Safe Workspace Reset (SYNC-08)
+  // 7. Honest Workspace Reset (V1-DATA-07)
   window.eduskillResetWorkspace = async function () {
-    if (!uid) return false;
+    if (!uid || !db) return false;
     clearTimeout(window.__eduskillSyncTimer);
 
     try {
-      // Delete cloud app state only (keeps profile and account intact)
-      if (db) {
-        await db.collection('users').doc(uid).collection('app').doc('state').delete();
+      // Delete all cloud app shards
+      const shards = ['core', 'quiz', 'timetable', 'notes', 'state'];
+      const batch = db.batch();
+      for (const s of shards) {
+        batch.delete(db.collection('users').doc(uid).collection('app').doc(s));
       }
+      await batch.commit();
     } catch (e) {
-      console.warn('Cloud reset warning:', e.message);
+      console.warn('[sync] Cloud reset error:', e.message);
+      // Honest failure: do NOT clear local data if cloud delete failed
+      throw new Error('Failed to reset cloud study data. Local data preserved.');
     }
 
-    // Clear ONLY current user's namespaced keys (NEVER touch other users' data)
+    // Clear ONLY current user's namespaced keys
     logicalKeys().forEach(k => {
-      try {
-        nativeRemove.call(window.localStorage, physicalKey(k));
-      } catch (_) {}
+      try { nativeRemove.call(window.localStorage, physicalKey(k)); } catch (_) {}
     });
+    try { nativeRemove.call(window.localStorage, metaKey()); } catch (_) {}
 
     isDirty = false;
     emitSyncStatus('synced');
     return true;
   };
 
-  window.eduskillSetActiveUser = function (user) {
-    if (user && user.uid) {
-      uid = user.uid;
-      nativeSet.call(window.localStorage, ACTIVE, uid);
-    }
-  };
-
-  // 7. Full Logout with Comprehensive Key Purge (SYNC-10)
+  // 8. Honest Logout with Complete Key Purge (V1-DATA-07)
   window.eduskillLogout = async function () {
     const oldUid = uid;
     clearTimeout(window.__eduskillSyncTimer);
 
     try {
-      if (isDirty) {
-        await syncCloud();
-      }
+      if (isDirty) await syncCloud();
     } catch (_) {}
 
     hydrated = false;
     isDirty = false;
     nativeRemove.call(window.localStorage, ACTIVE);
-    if (oldUid) sessionStorage.removeItem('eduskill_hydrated_' + oldUid);
 
-    // Complete purge of actual and legacy keys from un-namespaced storage
-    const allKnownKeys = [
-      'subjects', 'exams', 'quizHistory', 'savedNotes', 'eduskill_chat_history',
-      'reminders', 'weakTopics', 'examReadiness', 'tasksCompletedTotal',
-      'cached_timetable', 'timetable_preferences', 'timetable_created_at', 'timetable_input_signature',
-      'userName', 'userEmail', 'userRole', 'studentId', 'userPhoto', 'username',
-      'pref_exam_alerts', 'pref_study_reminder', 'smartNotes', 'chatHistory', 'taskList', 'timetable'
-    ];
-    allKnownKeys.forEach(k => {
-      try { nativeRemove.call(window.localStorage, k); } catch (_) {}
-    });
-
-    // Remove any raw daily task / alert keys
-    const rawLen = getRawLength();
-    const dynamicKeys = [];
-    for (let i = 0; i < rawLen; i++) {
-      try {
-        const k = nativeKey.call(window.localStorage, i);
-        if (k && (k.startsWith('tasks_') || k.startsWith('dailyReminder_') || k.startsWith('reminder_sent_'))) {
-          dynamicKeys.push(k);
-        }
-      } catch (_) {}
+    // Complete purge of all eduskill_user_<oldUid>__* keys from localStorage
+    if (oldUid) {
+      const p = PREFIX + oldUid + '__';
+      const metaK = '__eduskill_meta__' + oldUid;
+      const rawLen = getRawLength();
+      const keysToPurge = [];
+      for (let i = 0; i < rawLen; i++) {
+        try {
+          const k = nativeKey.call(window.localStorage, i);
+          if (k && (k.indexOf(p) === 0 || k === metaK)) {
+            keysToPurge.push(k);
+          }
+        } catch (_) {}
+      }
+      keysToPurge.forEach(k => {
+        try { nativeRemove.call(window.localStorage, k); } catch (_) {}
+      });
     }
-    dynamicKeys.forEach(k => {
-      try { nativeRemove.call(window.localStorage, k); } catch (_) {}
-    });
 
     if (auth) {
-      try {
-        await auth.signOut();
-      } catch (_) {}
+      try { await auth.signOut(); } catch (_) {}
     }
 
     (window.top || window).location.href = 'loginform.html';
   };
 
-  // 8. Auth State Observer (AUTH-04: Session Authority)
+  // 9. Auth State Observer
   if (auth) {
     auth.onAuthStateChanged(user => {
       if (user) {
-        hydrateCloud(user);
+        if (isShell) {
+          hydrateCloud(user);
+        } else {
+          uid = user.uid;
+          nativeSet.call(window.localStorage, ACTIVE, uid);
+        }
       } else {
-        // True unauthenticated state: clear local active marker and redirect
         nativeRemove.call(window.localStorage, ACTIVE);
         const onLoginPage = location.pathname.toLowerCase().endsWith('loginform.html');
         if (!onLoginPage) {
@@ -455,7 +647,38 @@
     });
   }
 
+  // Cross-frame event sync
+  if (channel) {
+    channel.addEventListener('message', (e) => {
+      if (e.data?.type === 'storage_change' && isShell) {
+        const k = e.data.key;
+        const shard = docFor(k);
+        if (shard) {
+          dirtyShards.add(shard);
+          isDirty = true;
+          scheduleSync();
+        }
+      }
+    });
+  }
+
   // Helper getters
+  window.readJSON = function (key, fallback) {
+    try {
+      const raw = localStorage.getItem(key);
+      if (raw === null || raw === undefined) return fallback;
+      const parsed = JSON.parse(raw);
+      return parsed ?? fallback;
+    } catch (e) {
+      try {
+        const raw = localStorage.getItem(key);
+        if (raw) localStorage.setItem('corrupt_' + key, raw);
+      } catch (_) {}
+      console.warn(`[EduStorage] Corrupted JSON for "${key}", backed up to corrupt_${key}`);
+      return fallback;
+    }
+  };
+
   window.eduskillGetSyncState = function () {
     return {
       status: syncStatus,
@@ -464,5 +687,4 @@
       uid: uid
     };
   };
-
-})();
+})(typeof window !== 'undefined' ? window : globalThis);

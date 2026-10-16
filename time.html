@@ -944,11 +944,21 @@
                 if (!buildInitialized) initBuild();
             }, 500);
 
+            const bareKey = k => String(k || '').replace(/^eduskill_user_.*?__/, '');
             window.addEventListener('storage', (e) => {
-                if (e.key === 'subjects' || e.key === 'exams' || e.key === 'timetable_preferences') {
+                const k = bareKey(e.key);
+                if (k === 'subjects' || k === 'exams' || k === 'timetable_preferences') {
                     buildTimetable();
                 }
             });
+            if (typeof BroadcastChannel !== 'undefined') {
+                new BroadcastChannel('eduskill').addEventListener('message', (e) => {
+                    const k = bareKey(e.data?.key);
+                    if (k === 'subjects' || k === 'exams' || k === 'timetable_preferences') {
+                        buildTimetable();
+                    }
+                });
+            }
         });
 
         function toggleSettingsCard() {

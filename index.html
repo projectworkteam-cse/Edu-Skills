@@ -1073,11 +1073,19 @@
                             el.appendChild(icon);
                         }
                         renderHeaderName(localStorage.getItem('userName'));
+                        const bareKey = k => String(k || '').replace(/^eduskill_user_.*?__/, '');
                         window.addEventListener('storage', (e) => {
-                            if (e.key === 'userName' || e.key === 'userPhoto') {
+                            const k = bareKey(e.key);
+                            if (k === 'userName' || k === 'userPhoto') {
                                 renderHeaderName();
                             }
                         });
+                        if (typeof BroadcastChannel !== 'undefined') {
+                            new BroadcastChannel('eduskill').addEventListener('message', (e) => {
+                                const k = bareKey(e.data?.key);
+                                if (k === 'userName' || k === 'userPhoto') renderHeaderName();
+                            });
+                        }
                         window.addEventListener('eduskill-cloud-ready', () => {
                             renderHeaderName();
                         });
@@ -1890,9 +1898,15 @@ INSTRUCTIONS:
             }
         }
 
+        const bareKeyForExams = k => String(k || '').replace(/^eduskill_user_.*?__/, '');
         window.addEventListener('storage', e => {
-            if (e.key === 'exams') renderUpcomingExams();
+            if (bareKeyForExams(e.key) === 'exams') renderUpcomingExams();
         });
+        if (typeof BroadcastChannel !== 'undefined') {
+            new BroadcastChannel('eduskill').addEventListener('message', e => {
+                if (bareKeyForExams(e.data?.key) === 'exams') renderUpcomingExams();
+            });
+        }
 
         // ── REMINDERS SYSTEM ──────────────────────────────────────────────────
         // Reminders show as a pop-up message on screen (modal dialog).
@@ -2297,9 +2311,15 @@ INSTRUCTIONS:
         }
 
         // Chat history can change from another frame (e.g. Settings) — keep in sync
+        const bareKeyForChat = k => String(k || '').replace(/^eduskill_user_.*?__/, '');
         window.addEventListener('storage', (e) => {
-            if (e.key === CHAT_STORAGE_KEY) loadChatHistory();
+            if (bareKeyForChat(e.key) === CHAT_STORAGE_KEY) loadChatHistory();
         });
+        if (typeof BroadcastChannel !== 'undefined') {
+            new BroadcastChannel('eduskill').addEventListener('message', e => {
+                if (bareKeyForChat(e.data?.key) === CHAT_STORAGE_KEY) loadChatHistory();
+            });
+        }
 
         // Initial paint
         loadChatHistory();
