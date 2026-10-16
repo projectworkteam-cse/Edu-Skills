@@ -1,14 +1,32 @@
-# Secrets and local environments
+# ── Private docs (audits, prompts) - NEVER push ──
+docs/
+
+# ── Secrets and local environments ──
 .env
+.env.*
+!.env.example
 *.local
 *.key
 *.pem
+serviceAccount*.json
+firebase-adminsdk*.json
 
-# Dependencies & Build Artefacts
+# ── Dependencies & build output ──
 node_modules/
 .vercel/
+dist/
+coverage/
+*.log
+npm-debug.log*
 
-# OS metadata
+# ── Editor / OS ──
 .DS_Store
 Thumbs.db
+.idea/
+.vscode/
+*.swp
+
+# ── Antigravity / agent scratch ──
+.antigravity/
+.agent-scratch/
 
