@@ -6,6 +6,10 @@
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
+<script src="js/services/sync-shards.js"></script>
+<script src="js/domain/migrate.js"></script>
+<script src="js/services/storage.js"></script>
+<script src="js/services/ai-client.js"></script>
 <script src="js/env.js"></script>
 <script src="js/eduskill-sync.js"></script>
 
@@ -158,6 +162,29 @@
 
         .btn-delete:hover {
             background: #fee2e2;
+        }
+
+        .btn-edit {
+            background: #eef2ff;
+            color: #4f46e5;
+            border: 1px solid #c7d2fe;
+            padding: 6px 12px;
+            border-radius: 6px;
+            font-size: 12px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+
+        .btn-edit:hover {
+            background: #e0e7ff;
+        }
+
+        .card-actions {
+            display: flex;
+            gap: 8px;
+            margin-top: 12px;
+            align-items: center;
         }
 
         .status-msg {
@@ -495,12 +522,56 @@
         </div>
     </div>
 
+    <!-- Edit Modal (V1-FUNC-06) -->
+    <div id="editModalOverlay" style="display:none; position:fixed; inset:0; background:rgba(15,23,42,0.5); z-index:9999; align-items:center; justify-content:center; padding:16px;">
+        <div style="background:#ffffff; border-radius:12px; max-width:440px; width:100%; padding:20px; box-shadow:0 10px 25px -5px rgba(0,0,0,0.1), 0 8px 10px -6px rgba(0,0,0,0.1); border:1px solid var(--card-border);">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:14px;">
+                <h3 id="editModalTitle" style="font-size:16px; font-weight:700; color:var(--text-main); margin:0;">Edit</h3>
+                <button type="button" onclick="closeEditModal()" style="border:none; background:none; font-size:20px; color:var(--text-sub); cursor:pointer; padding:4px;">&times;</button>
+            </div>
+            <div id="editModalFields" style="display:flex; flex-direction:column; gap:12px;"></div>
+            <p id="editModalError" class="status-msg error" style="margin-top:8px; display:none;"></p>
+            <div style="display:flex; justify-content:flex-end; gap:8px; margin-top:18px;">
+                <button type="button" onclick="closeEditModal()" style="padding:8px 14px; border-radius:8px; border:1px solid var(--card-border); background:var(--bg-light); color:var(--text-main); font-weight:600; font-size:13px; cursor:pointer;">Cancel</button>
+                <button type="button" id="editModalSaveBtn" class="btn-primary" style="padding:8px 16px; font-size:13px;">Save Changes</button>
+            </div>
+        </div>
+    </div>
+
     <script>
-        let subjects = JSON.parse(localStorage.getItem('subjects') || '[]');
-        let exams = JSON.parse(localStorage.getItem('exams') || '[]');
         let generatedTopics = [];
 
-        const escapeHTML = value => String(value).replace(/[&<>"']/g, c => ({
+        function getSubjects() {
+            if (window.EduStorage && typeof window.EduStorage.readJSON === 'function') {
+                return window.EduStorage.readJSON('subjects', []);
+            }
+            return JSON.parse(localStorage.getItem('subjects') || '[]');
+        }
+
+        function saveSubjects(list) {
+            if (window.EduStorage && typeof window.EduStorage.writeJSON === 'function') {
+                window.EduStorage.writeJSON('subjects', list);
+            } else {
+                localStorage.setItem('subjects', JSON.stringify(list));
+            }
+        }
+
+        function getExams() {
+            if (window.EduStorage && typeof window.EduStorage.readJSON === 'function') {
+                return window.EduStorage.readJSON('exams', []);
+            }
+            return JSON.parse(localStorage.getItem('exams') || '[]');
+        }
+
+        function saveExams(list) {
+            if (window.EduStorage && typeof window.EduStorage.writeJSON === 'function') {
+                window.EduStorage.writeJSON('exams', list);
+            } else {
+                localStorage.setItem('exams', JSON.stringify(list));
+            }
+        }
+
+        const escapeHTML = value => String(value == null ? '' : value).replace(/[&<>"']/g, c => ({
             '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
         }[c]));
 
@@ -516,6 +587,7 @@
         function updateSubjectSelect() {
             const select = document.getElementById('examSubjectSelect');
             if (!select) return;
+            const subjects = getSubjects();
             select.innerHTML = subjects.length
                 ? '<option value="">Select Subject</option>' +
                 subjects.map(s => `<option value="${escapeHTML(s.name)}">${escapeHTML(s.name)}</option>`).join('')
@@ -531,7 +603,10 @@
                 setStatus('topicStatus', 'Please enter a subject name first.', 'error');
                 return;
             }
-
+            if (subject.length > 40) {
+                setStatus('topicStatus', 'Subject name must be at most 40 characters.', 'error');
+                return;
+            }
             if (!difficulty) {
                 setStatus('topicStatus', 'Please select a difficulty level first.', 'error');
                 return;
@@ -557,28 +632,32 @@ Hard -> 90 to 180 mins
 Only JSON.`;
 
             try {
+                // Feature 'topics' with server-controlled model & tokens (V1-AI-01, V1-AI-05)
                 const data = await window.eduskillGroqFetch({
-                    model: "openai/gpt-oss-120b",
+                    feature: 'topics',
                     messages: [
-                        { role: "system", content: "Return only JSON." },
-                        { role: "user", content: prompt }
+                        { role: 'system', content: 'Return only JSON.' },
+                        { role: 'user', content: prompt }
                     ],
-                    temperature: 0.7,
-                    max_tokens: 600
+                    temperature: 0.6
                 });
 
-                const raw = data.choices?.[0]?.message?.content || "";
-                const json = raw.match(/\[[\s\S]*\]/);
+                const raw = data.choices?.[0]?.message?.content || '';
+                const parsed = (window.EduAI && typeof window.EduAI.parseAiJson === 'function')
+                    ? window.EduAI.parseAiJson(raw, Array.isArray)
+                    : null;
 
-                if (!json) throw new Error("Invalid AI response format");
+                const topicsArr = Array.isArray(parsed) ? parsed : (function () {
+                    const m = raw.match(/\[[\s\S]*\]/);
+                    try { return m ? JSON.parse(m[0]) : null; } catch (_) { return null; }
+                })();
 
-                const parsed = JSON.parse(json[0]);
-                if (!Array.isArray(parsed) || parsed.length === 0) {
-                    throw new Error("AI did not return any topics. Please try again.");
+                if (!Array.isArray(topicsArr) || topicsArr.length === 0) {
+                    throw new Error('AI did not return any topics. Please try again.');
                 }
 
-                generatedTopics = parsed.map(item => {
-                    const topicStr = (item && typeof item.topic === 'string') ? item.topic.trim() : '';
+                generatedTopics = topicsArr.map(item => {
+                    const topicStr = (item && typeof item.topic === 'string') ? item.topic.trim().slice(0, 60) : '';
                     const rawMins = Number(item && item.minutes);
                     const validMins = (Number.isFinite(rawMins) && rawMins > 0) ? Math.min(Math.max(Math.round(rawMins), 5), 240) : 30;
                     return {
@@ -588,10 +667,10 @@ Only JSON.`;
                 }).filter(t => t.topic.length > 0);
 
                 if (generatedTopics.length === 0) {
-                    throw new Error("No valid topics found in AI response.");
+                    throw new Error('No valid topics found in AI response.');
                 }
 
-                document.getElementById("topicList").innerHTML =
+                document.getElementById('topicList').innerHTML =
                     generatedTopics.map((item, index) => `
                         <label class="topic-option">
                             <input type="checkbox" checked data-topic="${index}">
@@ -600,15 +679,15 @@ Only JSON.`;
                                 <small>⏱ ${escapeHTML(String(item.minutes))} mins</small>
                             </div>
                         </label>
-                    `).join("");
+                    `).join('');
 
-                document.getElementById("topicPanel").style.display = "block";
-                clearStatus("topicStatus");
-                clearStatus("addSubjectStatus");
+                document.getElementById('topicPanel').style.display = 'block';
+                clearStatus('topicStatus');
+                clearStatus('addSubjectStatus');
 
             } catch (err) {
                 console.error(err);
-                setStatus("topicStatus", err.message, "error");
+                setStatus('topicStatus', err.message || 'AI topic generation failed. Please try again.', 'error');
             } finally {
                 button.disabled = false;
                 button.textContent = 'Generate AI Topics';
@@ -616,55 +695,86 @@ Only JSON.`;
         }
 
         function addSubject() {
-            const name = document.getElementById("subjectName").value.trim();
-            const difficulty = document.getElementById("difficulty").value;
+            const rawName = document.getElementById('subjectName').value;
+            const name = (rawName || '').trim();
+            const difficulty = document.getElementById('difficulty').value;
 
-            const selected = [...document.querySelectorAll("#topicList input:checked")]
+            if (!name) {
+                setStatus('addSubjectStatus', 'Subject name is required.', 'error');
+                return;
+            }
+            if (name.length > 40) {
+                setStatus('addSubjectStatus', 'Subject name must be at most 40 characters.', 'error');
+                return;
+            }
+            if (!difficulty) {
+                setStatus('addSubjectStatus', 'Please select a difficulty level.', 'error');
+                return;
+            }
+
+            // Case-insensitive duplicate check (V1-FUNC-05)
+            const currentSubjects = getSubjects();
+            const lower = name.toLowerCase();
+            if (currentSubjects.some(s => (s.name || '').trim().toLowerCase() === lower)) {
+                setStatus('addSubjectStatus', `You already have a subject named "${name}".`, 'error');
+                return;
+            }
+
+            const selected = [...document.querySelectorAll('#topicList input:checked')]
                 .map(input => generatedTopics[Number(input.dataset.topic)])
                 .filter(Boolean);
 
-            if (!name || !difficulty) {
-                setStatus("addSubjectStatus", "Subject name and difficulty are required.", "error");
-                return;
-            }
-
             if (!selected.length) {
-                setStatus("addSubjectStatus", "Please select at least one topic.", "error");
+                setStatus('addSubjectStatus', 'Please select at least one topic.', 'error');
                 return;
             }
 
+            const sid = 'sub_' + Math.random().toString(36).slice(2, 9) + Date.now().toString(36).slice(-4);
             const totalMinutes = selected.reduce((sum, item) => sum + Number(item.minutes), 0);
 
+            // Structure topics with stable IDs and sid link (V1-DATA-09, V1-FUNC-01)
+            const topicsWithIds = selected.map((item, idx) => ({
+                id: 'top_' + Math.random().toString(36).slice(2, 9) + (Date.now() + idx).toString(36).slice(-4),
+                sid: sid,
+                name: item.topic.slice(0, 60),
+                topic: item.topic.slice(0, 60),
+                minutes: item.minutes,
+                done: false
+            }));
+
             const newSubject = {
-                id: Date.now(),
-                name,
-                difficulty,
-                topics: selected,
-                totalMinutes
+                id: sid,
+                name: name,
+                difficulty: difficulty,
+                topics: topicsWithIds,
+                totalMinutes: totalMinutes
             };
 
-            subjects.push(newSubject);
-            localStorage.setItem("subjects", JSON.stringify(subjects));
+            currentSubjects.push(newSubject);
+            saveSubjects(currentSubjects);
 
-            document.getElementById("subjectName").value = "";
-            document.getElementById("difficulty").value = "";
-            document.getElementById("topicPanel").style.display = "none";
-            document.getElementById("topicList").textContent = "";
+            document.getElementById('subjectName').value = '';
+            document.getElementById('difficulty').value = '';
+            document.getElementById('topicPanel').style.display = 'none';
+            document.getElementById('topicList').textContent = '';
             generatedTopics = [];
 
             updateSubjectSelect();
             renderSubjects();
 
-            setStatus("topicStatus", `✅ Subject "${name}" added successfully!`, "success");
-            setTimeout(() => clearStatus("topicStatus"), 3000);
+            setStatus('topicStatus', `✅ Subject "${name}" added successfully!`, 'success');
+            setTimeout(() => clearStatus('topicStatus'), 3000);
+            notifyDataChange();
         }
 
         function addExam() {
-            const name = document.getElementById('examName').value.trim();
+            const rawName = document.getElementById('examName').value;
+            const name = (rawName || '').trim();
             const subject = document.getElementById('examSubjectSelect').value;
             const date = document.getElementById('examDate').value;
 
             if (!name) { setStatus('examStatus', 'Please enter an exam name.', 'error'); return; }
+            if (name.length > 40) { setStatus('examStatus', 'Exam name must be at most 40 characters.', 'error'); return; }
             if (!subject) { setStatus('examStatus', 'Please select a subject.', 'error'); return; }
             if (!date) { setStatus('examStatus', 'Please pick an exam date.', 'error'); return; }
 
@@ -683,9 +793,22 @@ Only JSON.`;
                 }
             }
 
-            const newExam = { id: Date.now(), name, subject, date, historical: isPast };
-            exams.push(newExam);
-            localStorage.setItem('exams', JSON.stringify(exams));
+            const currentExams = getExams();
+            const currentSubs = getSubjects();
+            const matchedSub = currentSubs.find(s => s.name === subject);
+            const eid = 'exm_' + Math.random().toString(36).slice(2, 9) + Date.now().toString(36).slice(-4);
+
+            const newExam = {
+                id: eid,
+                eid: eid,
+                sid: matchedSub ? matchedSub.id : null,
+                name: name,
+                subject: subject,
+                date: date,
+                historical: isPast
+            };
+            currentExams.push(newExam);
+            saveExams(currentExams);
 
             document.getElementById('examName').value = '';
             document.getElementById('examSubjectSelect').value = '';
@@ -695,102 +818,250 @@ Only JSON.`;
             setStatus('examStatus', `✅ Exam "${name}" saved for ${date}!`, 'success');
             setTimeout(() => clearStatus('examStatus'), 3500);
 
-            if (window.parent && typeof window.parent.renderUpcomingExams === 'function') {
-                window.parent.renderUpcomingExams();
-                if (typeof window.parent.updateNotificationBadge === 'function') {
-                    window.parent.updateNotificationBadge();
-                }
-            }
+            notifyDataChange();
         }
 
-        function toggleTopicDone(subjectId, topicIdx) {
-            const sub = subjects.find(s => Number(s.id) === Number(subjectId));
-            if (!sub || !sub.topics || !sub.topics[topicIdx]) return;
+        // ── EDIT SUBJECT & EXAM (V1-FUNC-06) ──────────────────────────────────
+        function editSubject(subjectId) {
+            const currentSubs = getSubjects();
+            const sub = currentSubs.find(s => String(s.id) === String(subjectId));
+            if (!sub) return;
 
-            const targetTopic = sub.topics[topicIdx];
-            targetTopic.done = !targetTopic.done;
+            const overlay = document.getElementById('editModalOverlay');
+            const title = document.getElementById('editModalTitle');
+            const fields = document.getElementById('editModalFields');
+            const errEl = document.getElementById('editModalError');
+            const saveBtn = document.getElementById('editModalSaveBtn');
 
-            localStorage.setItem('subjects', JSON.stringify(subjects));
+            title.textContent = `Edit Subject: ${sub.name}`;
+            errEl.style.display = 'none';
 
-            const d = new Date();
-            const todayKey = 'tasks_' + d.getFullYear() + '-' +
-                String(d.getMonth() + 1).padStart(2, '0') + '-' +
-                String(d.getDate()).padStart(2, '0');
+            fields.innerHTML = `
+                <div>
+                    <label style="font-size:12px; font-weight:600; color:var(--text-sub); display:block; margin-bottom:4px;">Subject Name</label>
+                    <input type="text" id="editSubjectName" value="${escapeHTML(sub.name)}" maxlength="40" style="width:100%; box-sizing:border-box;">
+                </div>
+                <div>
+                    <label style="font-size:12px; font-weight:600; color:var(--text-sub); display:block; margin-bottom:4px;">Difficulty</label>
+                    <select id="editSubjectDiff" style="width:100%; box-sizing:border-box;">
+                        <option value="Easy" ${sub.difficulty === 'Easy' ? 'selected' : ''}>Easy</option>
+                        <option value="Medium" ${sub.difficulty === 'Medium' ? 'selected' : ''}>Medium</option>
+                        <option value="Hard" ${sub.difficulty === 'Hard' ? 'selected' : ''}>Hard</option>
+                    </select>
+                </div>
+            `;
 
-            const todayTasks = JSON.parse(localStorage.getItem(todayKey) || '[]');
-            let updatedTasks = false;
+            saveBtn.onclick = function () {
+                const newName = (document.getElementById('editSubjectName').value || '').trim();
+                const newDiff = document.getElementById('editSubjectDiff').value;
 
-            function stripPrefix(text) {
-                return text
-                    .replace(/^(read|review|watch|study|write|implement|complete|create|practice|learn|finish|do|solve)\b[\s\S]*?(for|on|about|of|in|to)\b\s*/i, '')
-                    .replace(/\(\d+\s*mins?\)\s*$/i, '')
-                    .trim();
+                if (!newName) {
+                    errEl.textContent = 'Subject name is required.';
+                    errEl.style.display = 'block';
+                    return;
+                }
+                if (newName.length > 40) {
+                    errEl.textContent = 'Subject name must be at most 40 characters.';
+                    errEl.style.display = 'block';
+                    return;
+                }
+                const lower = newName.toLowerCase();
+                const dup = currentSubs.some(s => String(s.id) !== String(subjectId) && (s.name || '').trim().toLowerCase() === lower);
+                if (dup) {
+                    errEl.textContent = `You already have another subject named "${newName}".`;
+                    errEl.style.display = 'block';
+                    return;
+                }
+
+                const oldName = sub.name;
+                sub.name = newName;
+                sub.difficulty = newDiff;
+                saveSubjects(currentSubs);
+
+                if (oldName !== newName) {
+                    const currentExams = getExams();
+                    let examsChanged = false;
+                    currentExams.forEach(e => {
+                        if (String(e.sid || '') === String(subjectId) || e.subject === oldName) {
+                            e.subject = newName;
+                            e.sid = sub.id;
+                            examsChanged = true;
+                        }
+                    });
+                    if (examsChanged) saveExams(currentExams);
+                }
+
+                closeEditModal();
+                updateSubjectSelect();
+                renderSubjects();
+                renderExams();
+                notifyDataChange();
+            };
+
+            overlay.style.display = 'flex';
+        }
+
+        function editExam(examId) {
+            const currentExams = getExams();
+            const currentSubs = getSubjects();
+            const exam = currentExams.find(e => String(e.id || e.eid) === String(examId));
+            if (!exam) return;
+
+            const overlay = document.getElementById('editModalOverlay');
+            const title = document.getElementById('editModalTitle');
+            const fields = document.getElementById('editModalFields');
+            const errEl = document.getElementById('editModalError');
+            const saveBtn = document.getElementById('editModalSaveBtn');
+
+            title.textContent = `Edit Exam: ${exam.name}`;
+            errEl.style.display = 'none';
+
+            const subOptions = currentSubs.map(s => `
+                <option value="${escapeHTML(s.name)}" ${s.name === exam.subject ? 'selected' : ''}>${escapeHTML(s.name)}</option>
+            `).join('');
+
+            fields.innerHTML = `
+                <div>
+                    <label style="font-size:12px; font-weight:600; color:var(--text-sub); display:block; margin-bottom:4px;">Exam Name</label>
+                    <input type="text" id="editExamName" value="${escapeHTML(exam.name)}" maxlength="40" style="width:100%; box-sizing:border-box;">
+                </div>
+                <div>
+                    <label style="font-size:12px; font-weight:600; color:var(--text-sub); display:block; margin-bottom:4px;">Subject</label>
+                    <select id="editExamSub" style="width:100%; box-sizing:border-box;">${subOptions}</select>
+                </div>
+                <div>
+                    <label style="font-size:12px; font-weight:600; color:var(--text-sub); display:block; margin-bottom:4px;">Date</label>
+                    <input type="date" id="editExamDate" value="${escapeHTML(exam.date)}" style="width:100%; box-sizing:border-box;">
+                </div>
+            `;
+
+            saveBtn.onclick = function () {
+                const newName = (document.getElementById('editExamName').value || '').trim();
+                const newSub = document.getElementById('editExamSub').value;
+                const newDate = document.getElementById('editExamDate').value;
+
+                if (!newName) {
+                    errEl.textContent = 'Exam name is required.';
+                    errEl.style.display = 'block';
+                    return;
+                }
+                if (!newSub) {
+                    errEl.textContent = 'Please select a subject.';
+                    errEl.style.display = 'block';
+                    return;
+                }
+                if (!newDate) {
+                    errEl.textContent = 'Please pick an exam date.';
+                    errEl.style.display = 'block';
+                    return;
+                }
+
+                const examTime = new Date(newDate + 'T00:00:00');
+                if (isNaN(examTime.getTime())) {
+                    errEl.textContent = 'Please select a valid calendar date.';
+                    errEl.style.display = 'block';
+                    return;
+                }
+
+                const today = new Date();
+                today.setHours(0, 0, 0, 0);
+                exam.name = newName;
+                exam.subject = newSub;
+                exam.date = newDate;
+                exam.historical = examTime < today;
+
+                const matchedSub = currentSubs.find(s => s.name === newSub);
+                if (matchedSub) exam.sid = matchedSub.id;
+
+                saveExams(currentExams);
+                closeEditModal();
+                renderExams();
+                notifyDataChange();
+            };
+
+            overlay.style.display = 'flex';
+        }
+
+        function closeEditModal() {
+            const overlay = document.getElementById('editModalOverlay');
+            if (overlay) overlay.style.display = 'none';
+        }
+
+        // ── CASCADE DELETE BY SID (V1-FUNC-04) ──────────────────────────────
+        function deleteSubject(id) {
+            const currentSubs = getSubjects();
+            const subject = currentSubs.find(s => String(s.id) === String(id));
+            if (!subject) return;
+
+            const currentExams = getExams();
+            const matchingExams = currentExams.filter(e => String(e.sid || '') === String(id) || e.subject === subject.name);
+
+            const quizHistory = (window.EduStorage ? window.EduStorage.readJSON('quizHistory', []) : JSON.parse(localStorage.getItem('quizHistory') || '[]'));
+            const matchingQuiz = Array.isArray(quizHistory) ? quizHistory.filter(q => String(q.sid || '') === String(id) || q.subject === subject.name) : [];
+
+            let matchingTasksCount = 0;
+            const taskKeys = [];
+            for (let i = 0; i < localStorage.length; i++) {
+                const k = localStorage.key(i);
+                if (k && (k.startsWith('tasks_') || k.includes('__tasks_'))) taskKeys.push(k);
             }
-
-            function matches(taskText, topicName) {
-                if (!taskText || !topicName) return false;
-                const tNorm = String(taskText).trim().toLowerCase();
-                const pNorm = String(topicName).trim().toLowerCase();
-                if (tNorm === pNorm) return true;
-                const escaped = pNorm.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-                const regex = new RegExp('(?:^|\\b|\\s)' + escaped + '(?:$|\\b|\\s)', 'i');
-                if (regex.test(tNorm)) return true;
-                const stripped = stripPrefix(taskText).toLowerCase();
-                return regex.test(stripped);
-            }
-
-            todayTasks.forEach(task => {
-                if (matches(task.text, targetTopic.topic)) {
-                    const wasDone = task.done;
-                    task.done = targetTopic.done;
-                    updatedTasks = true;
-                    if (task.done && !wasDone) {
-                        bumpCompletedTotal(1);
-                    } else if (!task.done && wasDone) {
-                        bumpCompletedTotal(-1);
+            taskKeys.forEach(k => {
+                try {
+                    const arr = JSON.parse(localStorage.getItem(k) || '[]');
+                    if (Array.isArray(arr)) {
+                        matchingTasksCount += arr.filter(t => t && t.ref && String(t.ref.sid) === String(id)).length;
                     }
-                }
+                } catch (_) {}
             });
 
-            if (updatedTasks) {
-                localStorage.setItem(todayKey, JSON.stringify(todayTasks));
+            const msg = `Are you sure you want to delete "${subject.name}"?\nThis will remove ${matchingExams.length} exam(s), ${matchingTasksCount} linked task(s), and ${matchingQuiz.length} quiz record(s).`;
+            if (!confirm(msg)) return;
+
+            const newSubs = currentSubs.filter(s => String(s.id) !== String(id));
+            saveSubjects(newSubs);
+
+            if (matchingExams.length) {
+                const newExams = currentExams.filter(e => String(e.sid || '') !== String(id) && e.subject !== subject.name);
+                saveExams(newExams);
             }
 
+            if (matchingQuiz.length) {
+                const newQuiz = quizHistory.filter(q => String(q.sid || '') !== String(id) && q.subject !== subject.name);
+                if (window.EduStorage) window.EduStorage.writeJSON('quizHistory', newQuiz);
+                else localStorage.setItem('quizHistory', JSON.stringify(newQuiz));
+            }
+
+            taskKeys.forEach(k => {
+                try {
+                    const arr = JSON.parse(localStorage.getItem(k) || '[]');
+                    if (Array.isArray(arr)) {
+                        const cleaned = arr.filter(t => !t || !t.ref || String(t.ref.sid) !== String(id));
+                        if (cleaned.length !== arr.length) {
+                            localStorage.setItem(k, JSON.stringify(cleaned));
+                        }
+                    }
+                } catch (_) {}
+            });
+
+            updateSubjectSelect();
             renderSubjects();
-            refreshProgressViews();
+            renderExams();
+            notifyDataChange();
         }
 
-        // Keep the lifetime completed-task counter in step with task toggles
-        function bumpCompletedTotal(delta) {
-            const current = parseInt(localStorage.getItem('tasksCompletedTotal') || '0', 10) || 0;
-            localStorage.setItem('tasksCompletedTotal', String(Math.max(0, current + delta)));
-        }
+        function deleteExam(id) {
+            const currentExams = getExams();
+            const exam = currentExams.find(e => String(e.id || e.eid) === String(id));
+            if (exam && !confirm(`Are you sure you want to delete exam "${exam.name}"?`)) return;
 
-        // Ask the shell (and whichever page is loaded in it) to re-read progress data
-        function refreshProgressViews() {
-            if (window.parent && typeof window.parent.renderTasks === 'function') {
-                window.parent.renderTasks();
-                if (typeof window.parent.updateNotificationBadge === 'function') {
-                    window.parent.updateNotificationBadge();
-                }
-            }
-
-            let iframe = null;
-            try {
-                iframe = window.parent.document.getElementById('pageViewport');
-            } catch (e) {
-                iframe = null;
-            }
-            if (!iframe || !iframe.contentWindow) return;
-
-            const view = iframe.contentWindow;
-            ['renderSubjects', 'loadSubjectProgress', 'loadMetrics', 'loadBadges', 'loadInsight', 'renderChart'].forEach(fn => {
-                if (typeof view[fn] === 'function') view[fn]();
-            });
+            const newExams = currentExams.filter(e => String(e.id || e.eid) !== String(id));
+            saveExams(newExams);
+            renderExams();
+            notifyDataChange();
         }
 
         function renderSubjects() {
-            subjects = JSON.parse(localStorage.getItem('subjects') || '[]');
+            const subjects = getSubjects();
             const box = document.getElementById("subjects");
 
             if (!subjects.length) {
@@ -829,7 +1100,7 @@ Only JSON.`;
                         </div>
 
                         <div class="topic-tags">
-                            ${(subject.topics || []).map((item, idx) => `
+                            ${topics.map((item, idx) => `
                                 <div class="topic-item ${item.done ? 'done' : ''}" style="
                                     width:100%;
                                     padding:8px;
@@ -849,7 +1120,7 @@ Only JSON.`;
                                         style="cursor:not-allowed; width:15px; height:15px; accent-color:#4f46e5;"
                                     >
                                     <div style="flex:1;">
-                                        <b style="${item.done ? 'text-decoration: line-through; color: var(--text-sub);' : ''}">${escapeHTML(item.topic)}</b>
+                                        <b style="${item.done ? 'text-decoration: line-through; color: var(--text-sub);' : ''}">${escapeHTML(item.name || item.topic)}</b>
                                         <br>
                                         <small style="color:var(--text-sub);">⏱ ${escapeHTML(String(Number(item.minutes) || 30))} mins</small>
                                     </div>
@@ -858,16 +1129,21 @@ Only JSON.`;
                         </div>
                     </div>
 
-                    <button class="btn-delete" onclick="deleteSubject(${subject.id})">
-                        <i class="fas fa-trash-alt"></i> Delete
-                    </button>
+                    <div class="card-actions">
+                        <button class="btn-edit" type="button" onclick="editSubject('${escapeHTML(subject.id)}')">
+                            <i class="fas fa-edit"></i> Edit
+                        </button>
+                        <button class="btn-delete" type="button" onclick="deleteSubject('${escapeHTML(subject.id)}')">
+                            <i class="fas fa-trash-alt"></i> Delete
+                        </button>
+                    </div>
                 </article>
                 `;
             }).join("");
         }
 
         function renderExams() {
-            exams = JSON.parse(localStorage.getItem('exams') || '[]');
+            const exams = getExams();
             const box = document.getElementById('exams');
 
             if (!exams.length) {
@@ -893,120 +1169,62 @@ Only JSON.`;
                         </p>
                     </div>
 
-                    <button class="btn-delete" onclick="deleteExam(${Number(e.id)})">
-                        <i class="fas fa-trash-alt"></i> Delete
-                    </button>
+                    <div class="card-actions">
+                        <button class="btn-edit" type="button" onclick="editExam('${escapeHTML(e.id || e.eid)}')">
+                            <i class="fas fa-edit"></i> Edit
+                        </button>
+                        <button class="btn-delete" type="button" onclick="deleteExam('${escapeHTML(e.id || e.eid)}')">
+                            <i class="fas fa-trash-alt"></i> Delete
+                        </button>
+                    </div>
                 </article>
             `;}).join('');
         }
 
-        // ── DELETE SUBJECT + ITS RELATED TASKS ──────────────────────────────
-        // Removes any daily tasks (tasks_*) whose text matches this subject's
-        // name or topic names, so stale tasks don't linger after deletion.
-        function stripTaskPrefix(text) {
-            return text
-                .replace(/^(read|review|watch|study|write|implement|complete|create|practice|learn|finish|do|solve)\b[\s\S]*?(for|on|about|of|in|to)\b\s*/i, '')
-                .replace(/\(\d+\s*mins?\)\s*$/i, '')
-                .trim();
-        }
-
-        function topicMatchesTask(taskText, topicName) {
-            if (!taskText || !topicName) return false;
-            const tNorm = String(taskText).trim().toLowerCase();
-            const pNorm = String(topicName).trim().toLowerCase();
-            if (tNorm === pNorm) return true;
-            const escaped = pNorm.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-            const regex = new RegExp('(?:^|\\b|\\s)' + escaped + '(?:$|\\b|\\s)', 'i');
-            if (regex.test(tNorm)) return true;
-            const stripped = stripTaskPrefix(taskText).toLowerCase();
-            return regex.test(stripped);
-        }
-
-        function removeRelatedTasks(subject) {
-            const matchTerms = (subject.topics || []).map(t => t.topic);
-            if (subject.name) matchTerms.push(subject.name);
-            const terms = matchTerms.filter(Boolean);
-            if (!terms.length) return;
-
-            const today = new Date();
-            for (let offset = -30; offset <= 60; offset++) {
-                const d = new Date(today);
-                d.setDate(today.getDate() + offset);
-                const key = 'tasks_' + d.getFullYear() + '-' +
-                    String(d.getMonth() + 1).padStart(2, '0') + '-' +
-                    String(d.getDate()).padStart(2, '0');
-                const raw = localStorage.getItem(key);
-                if (!raw) continue;
-                let tasks;
-                try { tasks = JSON.parse(raw); } catch (e) { continue; }
-                if (!Array.isArray(tasks) || !tasks.length) continue;
-                const filtered = tasks.filter(task => {
-                    return task.done || !terms.some(term => topicMatchesTask(task.text, term));
-                });
-                if (filtered.length !== tasks.length) {
-                    localStorage.setItem(key, JSON.stringify(filtered));
-                }
-            }
-        }
-
-        function deleteSubject(id) {
-            const subject = subjects.find(s => Number(s.id) === id);
-            if (!subject) return;
-            if (!confirm(`Are you sure you want to delete "${subject.name}" and clean up its pending tasks?`)) return;
-
-            subjects = subjects.filter(s => Number(s.id) !== id);
-            localStorage.setItem('subjects', JSON.stringify(subjects));
-
-            removeRelatedTasks(subject);
-
-            updateSubjectSelect();
-            renderSubjects();
-
-            function notifyParent() {
-                if (window.parent && window.parent !== window) {
-                    if (typeof window.parent.renderTasks === 'function') {
-                        window.parent.renderTasks();
-                    }
-                    if (typeof window.parent.updateNotificationBadge === 'function') {
-                        window.parent.updateNotificationBadge();
-                    }
-                    try { window.parent.postMessage({ type: 'data-changed' }, window.location.origin); } catch (e) {}
-                }
-            }
-            notifyParent();
-            setTimeout(notifyParent, 100);
-        }
-
-        function deleteExam(id) {
-            const exam = exams.find(e => Number(e.id) === id);
-            if (exam && !confirm(`Are you sure you want to delete exam "${exam.name}"?`)) return;
-
-            exams = exams.filter(e => Number(e.id) !== id);
-            localStorage.setItem('exams', JSON.stringify(exams));
-            renderExams();
-
-            if (window.parent && typeof window.parent.renderUpcomingExams === 'function') {
-                window.parent.renderUpcomingExams();
-                if (typeof window.parent.updateNotificationBadge === 'function') {
-                    window.parent.updateNotificationBadge();
-                }
+        function notifyDataChange() {
+            if (window.parent && window.parent !== window) {
+                if (typeof window.parent.renderTasks === 'function') window.parent.renderTasks();
+                if (typeof window.parent.renderUpcomingExams === 'function') window.parent.renderUpcomingExams();
+                if (typeof window.parent.updateNotificationBadge === 'function') window.parent.updateNotificationBadge();
+                try { window.parent.postMessage({ type: 'data-changed' }, window.location.origin); } catch (e) {}
             }
         }
 
         // Normalize subjects without dropping records (FUNC-09)
+        const initSubjects = getSubjects();
         let _subjectsModified = false;
-        subjects.forEach((s, idx) => {
+        initSubjects.forEach((s, idx) => {
             if (!Array.isArray(s.topics)) { s.topics = []; _subjectsModified = true; }
-            if (!s.id) { s.id = Date.now() + idx; _subjectsModified = true; }
+            if (!s.id) { s.id = 'sub_' + Date.now() + '_' + idx; _subjectsModified = true; }
+            s.topics.forEach((t, tIdx) => {
+                if (!t.id) { t.id = 'top_' + s.id + '_' + tIdx; _subjectsModified = true; }
+                if (!t.sid) { t.sid = s.id; _subjectsModified = true; }
+            });
         });
         if (_subjectsModified) {
-            localStorage.setItem('subjects', JSON.stringify(subjects));
+            saveSubjects(initSubjects);
         }
 
         // Initialize page elements on load
         updateSubjectSelect();
         renderSubjects();
         renderExams();
+
+        // Listen for data sync updates (V1-FUNC-03)
+        window.addEventListener('storage', (e) => {
+            if (!e.key || e.key.includes('subjects') || e.key.includes('exams')) {
+                updateSubjectSelect();
+                renderSubjects();
+                renderExams();
+            }
+        });
+        window.addEventListener('message', (e) => {
+            if (e.data && e.data.type === 'data-changed') {
+                updateSubjectSelect();
+                renderSubjects();
+                renderExams();
+            }
+        });
     </script>
     <script>
         document.addEventListener('click', () => {

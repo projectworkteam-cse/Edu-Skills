@@ -6,6 +6,9 @@
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
+<script src="js/services/sync-shards.js"></script>
+<script src="js/domain/tasks.js"></script>
+<script src="js/services/storage.js"></script>
 <script src="js/env.js"></script>
 <script src="js/eduskill-sync.js"></script>
 
@@ -681,7 +684,7 @@
                 <div class="title-icon"><i class="fas fa-question"></i></div>
                 <div>
                     <h1>AI Quiz</h1>
-                    <p>Each topic has its own quiz. Score more than 50% to complete the topic and its related tasks.</p>
+                    <p>Each topic has its own quiz. Score 50% or more to complete the topic and its related tasks.</p>
                 </div>
             </div>
 
@@ -831,9 +834,17 @@
             }
         }
 
-        function getRelatedTasks(topicName, onlyPending = false) {
-            return getTodayTasks().filter(task =>
-                (!onlyPending || !task.done) && topicMatchesTask(task.text, topicName));
+        function getRelatedTasks(topicName, onlyPending = false, topicId = null) {
+            const cleanTopic = String(topicName || '').trim().toLowerCase();
+            return getTodayTasks().filter(task => {
+                if (onlyPending && task.done) return false;
+                if (topicId && task.ref && (task.ref.tid === topicId || task.ref.topicId === topicId)) return true;
+                if (!task.ref && cleanTopic) {
+                    const taskText = String(task.text || '').trim().toLowerCase();
+                    return taskText === cleanTopic;
+                }
+                return false;
+            });
         }
 
         function initSubjectSelect() {
@@ -873,7 +884,7 @@
             }
 
             list.innerHTML = topics.map((t, idx) => {
-                const related = getRelatedTasks(t.topic, true).length;
+                const related = getRelatedTasks(t.topic, true, t.id || t.tid).length;
                 const status = t.done
                     ? '<span class="tq-done"><i class="fas fa-circle-check"></i> Completed</span>'
                     : '&#9201; ' + (t.minutes || 30) + ' mins';
@@ -965,7 +976,7 @@
 
             const difficulty = document.getElementById('quizDifficulty').value || subject.difficulty || 'Medium';
 
-            const relatedTasks = getRelatedTasks(topicName, true);
+            const relatedTasks = getRelatedTasks(topicName, true, topic.id || topic.tid);
             const taskContext = relatedTasks.length
                 ? `\nThe student also has these related study tasks on this topic:\n- ` +
                   relatedTasks.map(t => t.text).join('\n- ') +
@@ -993,13 +1004,12 @@ Format:
 
             try {
                 const data = await window.eduskillGroqFetch({
-                    model: 'openai/gpt-oss-120b',
+                    feature: 'quiz',
                     messages: [
                         { role: 'system', content: 'Return only valid JSON.' },
                         { role: 'user', content: prompt }
                     ],
-                    temperature: 0.8,
-                    max_tokens: 2000
+                    temperature: 0.7
                 });
 
                 const raw = data.choices && data.choices[0] && data.choices[0].message
@@ -1106,8 +1116,8 @@ Format:
 
             let completedTasks = 0;
             if (passed) {
-                markTopicsComplete(currentQuiz.subjectId, [currentQuiz.topicName]);
-                completedTasks = markRelatedTasksComplete([currentQuiz.topicName]);
+                const topicId = markTopicsComplete(currentQuiz.subjectId, [currentQuiz.topicName]);
+                completedTasks = markRelatedTasksComplete([currentQuiz.topicName], topicId);
             }
 
             showResults(correct, total, pct, passed, completedTasks);
@@ -1185,36 +1195,23 @@ Format:
         function markTopicsComplete(subjectId, topicNames) {
             const subjects = getSubjects();
             const subject = subjects.find(s => String(s.id) === String(subjectId));
-            if (!subject || !Array.isArray(subject.topics)) return;
+            if (!subject || !Array.isArray(subject.topics)) return null;
 
-            const wanted = topicNames.map(n => String(n).toLowerCase());
+            const wanted = topicNames.map(n => String(n).trim().toLowerCase());
+            let completedTopicId = null;
             subject.topics.forEach(t => {
-                if (wanted.includes(String(t.topic).toLowerCase())) t.done = true;
+                const name = String(t.name || t.topic || '').trim().toLowerCase();
+                if (wanted.includes(name)) {
+                    t.done = true;
+                    if (t.id) completedTopicId = t.id;
+                }
             });
 
             localStorage.setItem(SUBJECTS_KEY, JSON.stringify(subjects));
+            return completedTopicId;
         }
 
-        function stripTaskPrefix(text) {
-            return text
-                .replace(/^(read|review|watch|study|write|implement|complete|create|practice|learn|finish|do|solve)\b[\s\S]*?(for|on|about|of|in|to)\b\s*/i, '')
-                .replace(/\(\d+\s*mins?\)\s*$/i, '')
-                .trim();
-        }
-
-        function topicMatchesTask(taskText, topicName) {
-            if (!taskText || !topicName) return false;
-            const tNorm = String(taskText).trim().toLowerCase();
-            const pNorm = String(topicName).trim().toLowerCase();
-            if (tNorm === pNorm) return true;
-            const escaped = pNorm.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-            const regex = new RegExp('(?:^|\\b|\\s)' + escaped + '(?:$|\\b|\\s)', 'i');
-            if (regex.test(tNorm)) return true;
-            const stripped = stripTaskPrefix(taskText).toLowerCase();
-            return regex.test(stripped);
-        }
-
-        function markRelatedTasksComplete(topicNames) {
+        function markRelatedTasksComplete(topicNames, topicId) {
             const key = todayKey();
             let tasks;
             try {
@@ -1225,18 +1222,24 @@ Format:
 
             let newlyDone = 0;
             if (Array.isArray(tasks) && tasks.length) {
+                // ID-based task completion (V1-FUNC-01)
+                if (window.EduTasks && typeof window.EduTasks.completeLinkedTasks === 'function' && topicId) {
+                    newlyDone += window.EduTasks.completeLinkedTasks(tasks, topicId);
+                }
+                // Fallback for legacy tasks without ref: exact match only (no fuzzy regex guessing)
+                const lowerNames = (topicNames || []).map(n => String(n).trim().toLowerCase());
                 tasks.forEach(task => {
-                    if (task.done) return;
-                    if (topicNames.some(name => topicMatchesTask(task.text, name))) {
-                        task.done = true;
-                        newlyDone++;
+                    if (!task.done && (!task.ref || !task.ref.tid)) {
+                        const norm = String(task.text || '').trim().toLowerCase();
+                        if (lowerNames.includes(norm)) {
+                            task.done = true;
+                            newlyDone++;
+                        }
                     }
                 });
 
                 if (newlyDone) {
                     localStorage.setItem(key, JSON.stringify(tasks));
-                    const current = parseInt(localStorage.getItem('tasksCompletedTotal') || '0', 10) || 0;
-                    localStorage.setItem('tasksCompletedTotal', String(Math.max(0, current + newlyDone)));
                 }
             }
 

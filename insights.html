@@ -6,6 +6,9 @@
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
+<script src="js/services/sync-shards.js"></script>
+<script src="js/services/storage.js"></script>
+<script src="js/services/ai-client.js"></script>
 <script src="js/env.js"></script>
 <script src="js/eduskill-sync.js"></script>
 
@@ -381,6 +384,7 @@
                 <div class="card-title">
                     <i class="fas fa-triangle-exclamation" style="color: var(--accent-orange);"></i>
                     <span>Weakness Detector</span>
+                    <span id="weakStaleBadge" style="display:none; margin-left:8px; font-size:11px; font-weight:600; padding:2px 8px; border-radius:10px; background:#fef3c7; color:#b45309;"><i class="fas fa-arrows-rotate"></i> Out of date — Refresh</span>
                 </div>
                 <button class="btn-primary" type="button" id="detectBtn" onclick="detectWeaknesses()">
                     <i class="fas fa-wand-magic-sparkles"></i> Detect Weak Areas
@@ -402,6 +406,7 @@
                 <div class="card-title">
                     <i class="fas fa-gauge-high" style="color: var(--primary-blue);"></i>
                     <span>Exam Readiness Predictor</span>
+                    <span id="readyStaleBadge" style="display:none; margin-left:8px; font-size:11px; font-weight:600; padding:2px 8px; border-radius:10px; background:#fef3c7; color:#b45309;"><i class="fas fa-arrows-rotate"></i> Out of date — Refresh</span>
                 </div>
                 <button class="btn-primary" type="button" id="predictBtn" onclick="predictReadiness()">
                     <i class="fas fa-crystal-ball"></i> Predict Readiness
@@ -688,7 +693,7 @@ Return ONLY valid JSON (no markdown) in this exact shape:
 {"recommendations":[{"subject":"...","topic":"...","why":"one short sentence explaining the weakness","action":"one concrete action the student should take next"}]}`;
 
                 const data = await window.eduskillGroqFetch({
-                    model: 'openai/gpt-oss-120b',
+                    feature: 'insights',
                     messages: [
                         { role: 'system', content: 'Return only valid JSON.' },
                         { role: 'user', content: prompt }
@@ -720,7 +725,13 @@ Return ONLY valid JSON (no markdown) in this exact shape:
             }
 
             renderWeaknesses(list);
-            localStorage.setItem(WEAK_KEY, JSON.stringify(list.slice(0, 12)));
+            localStorage.setItem(WEAK_KEY, JSON.stringify({
+                result: list.slice(0, 12),
+                basedOn: computeInsightsHash(),
+                at: Date.now()
+            }));
+            const weakBadge = document.getElementById('weakStaleBadge');
+            if (weakBadge) weakBadge.style.display = 'none';
         }
 
         // ── EXAM READINESS ──────────────────────────────────────────────────
@@ -871,7 +882,7 @@ Return ONLY valid JSON (no markdown) in this exact shape:
 {"predictions":[{"exam":"...","verdict":"...","advice":"one or two short sentences with the most impactful next step"}]}`;
 
                 const data = await window.eduskillGroqFetch({
-                    model: 'openai/gpt-oss-120b',
+                    feature: 'insights',
                     messages: [
                         { role: 'system', content: 'Return only valid JSON.' },
                         { role: 'user', content: prompt }
@@ -900,15 +911,53 @@ Return ONLY valid JSON (no markdown) in this exact shape:
             }
 
             renderReadiness(list);
-            localStorage.setItem(READY_KEY, JSON.stringify(list));
+            localStorage.setItem(READY_KEY, JSON.stringify({
+                result: list,
+                basedOn: computeInsightsHash(),
+                at: Date.now()
+            }));
+            const readyBadge = document.getElementById('readyStaleBadge');
+            if (readyBadge) readyBadge.style.display = 'none';
         }
 
-        // ── INIT ────────────────────────────────────────────────────────────
+        // ── STALE HASH & INIT (V1-FUNC-10) ──────────────────────────────────
+        function computeInsightsHash() {
+            const subjects = getJSON(SUBJECTS_KEY, []);
+            const exams = getJSON(EXAMS_KEY, []);
+            const history = getJSON(HISTORY_KEY, []);
+            const sStr = subjects.map(s => String(s.id || s.name) + ':' + (s.topics || []).filter(t => t && t.done).length).join(',');
+            const eStr = exams.map(e => String(e.id || e.name) + ':' + String(e.date || '')).join(',');
+            const qCount = history.length;
+            const lastQ = history[0]?.timestamp || history[0]?.date || '';
+            return `${sStr}::${eStr}::${qCount}::${lastQ}`;
+        }
+
         function renderFromStorage() {
-            const weak = getJSON(WEAK_KEY, []);
-            if (weak.length) renderWeaknesses(weak);
-            const ready = getJSON(READY_KEY, []);
-            if (ready.length) renderReadiness(ready);
+            const currentHash = computeInsightsHash();
+
+            const weakRaw = getJSON(WEAK_KEY, null);
+            if (weakRaw) {
+                const isObj = typeof weakRaw === 'object' && !Array.isArray(weakRaw) && Array.isArray(weakRaw.result);
+                const weakList = isObj ? weakRaw.result : (Array.isArray(weakRaw) ? weakRaw : []);
+                if (weakList.length) {
+                    renderWeaknesses(weakList);
+                    const isStale = isObj && weakRaw.basedOn && weakRaw.basedOn !== currentHash;
+                    const b = document.getElementById('weakStaleBadge');
+                    if (b) b.style.display = isStale ? 'inline-block' : 'none';
+                }
+            }
+
+            const readyRaw = getJSON(READY_KEY, null);
+            if (readyRaw) {
+                const isObj = typeof readyRaw === 'object' && !Array.isArray(readyRaw) && Array.isArray(readyRaw.result);
+                const readyList = isObj ? readyRaw.result : (Array.isArray(readyRaw) ? readyRaw : []);
+                if (readyList.length) {
+                    renderReadiness(readyList);
+                    const isStale = isObj && readyRaw.basedOn && readyRaw.basedOn !== currentHash;
+                    const b = document.getElementById('readyStaleBadge');
+                    if (b) b.style.display = isStale ? 'inline-block' : 'none';
+                }
+            }
         }
 
         window.addEventListener('DOMContentLoaded', renderFromStorage);

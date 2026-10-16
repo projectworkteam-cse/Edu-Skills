@@ -5,6 +5,10 @@
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
+<script src="js/services/sync-shards.js"></script>
+<script src="js/domain/dates.js"></script>
+<script src="js/domain/timetable-sig.js"></script>
+<script src="js/services/storage.js"></script>
 <script src="js/env.js"></script>
 <script src="js/eduskill-sync.js"></script>
 
@@ -912,7 +916,6 @@
             loadSettings();
 
             let buildInitialized = false;
-            let buildPollInterval = null;
             let lastDataSignature = '';
 
             function checkDataChange() {
@@ -931,11 +934,13 @@
                 buildInitialized = true;
                 lastDataSignature = getScheduleInputSignature();
                 buildTimetable();
-
-                if (!buildPollInterval) {
-                    buildPollInterval = setInterval(checkDataChange, 1500);
-                }
             }
+
+            // Minute timer & visibility change to detect local midnight rollover without busy polling (V1-FUNC-09, V1-FUNC-11)
+            document.addEventListener('visibilitychange', () => {
+                if (document.visibilityState === 'visible') checkDataChange();
+            });
+            setInterval(checkDataChange, 60000);
 
             window.addEventListener('eduskill-cloud-ready', () => {
                 initBuild();
@@ -1017,12 +1022,28 @@
                 slot: document.getElementById('slotDuration').value
             };
             localStorage.setItem('timetable_preferences', JSON.stringify(prefs));
+            localStorage.removeItem('timetable_smart_active');
         }
 
         function getScheduleInputSignature() {
-            const todayStr = new Date().toISOString().slice(0, 10);
-            const prefsStr = localStorage.getItem('timetable_preferences') || '';
-            return (localStorage.getItem('subjects') || '') + '::' + (localStorage.getItem('exams') || '') + '::' + prefsStr + '::' + todayStr;
+            const subjects = (window.EduStorage ? window.EduStorage.readJSON('subjects', []) : JSON.parse(localStorage.getItem('subjects') || '[]'));
+            const exams = (window.EduStorage ? window.EduStorage.readJSON('exams', []) : JSON.parse(localStorage.getItem('exams') || '[]'));
+            const prefs = (window.EduStorage ? window.EduStorage.readJSON('timetable_preferences', {}) : JSON.parse(localStorage.getItem('timetable_preferences') || '{}'));
+            const localDate = (window.EduDates && typeof window.EduDates.dateKey === 'function')
+                ? window.EduDates.dateKey()
+                : (function () {
+                    const d = new Date();
+                    const pad = n => String(n).padStart(2, '0');
+                    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+                })();
+            const isSmart = localStorage.getItem('timetable_smart_active') === '1';
+
+            if (window.EduTimetableSig && typeof window.EduTimetableSig.scheduleSignature === 'function') {
+                return window.EduTimetableSig.scheduleSignature(subjects, exams, prefs, localDate, isSmart);
+            }
+            const s = (subjects || []).map(x => [x.id, x.name, x.difficulty, (x.topics || []).map(t => (t.name || t.topic) + ':' + (t.minutes || 30)).join(',')].join('|')).join(';');
+            const e = (exams || []).map(x => [x.subject, x.date].join('|')).join(';');
+            return [s, e, JSON.stringify(prefs || {}), localDate, isSmart ? 'smart' : ''].join('::');
         }
 
         function buildTimetable() {
@@ -1185,7 +1206,8 @@
             const weakKeys = Object.keys(wmap).filter(k => wmap[k] >= 45);
             const completed = subjects.reduce((a, s) => a + (s.topics || []).filter(t => t.done).length, 0);
 
-            // Regenerate with the weakness boost active
+            // Regenerate with the weakness boost active and mark smart active (V1-FUNC-09)
+            localStorage.setItem('timetable_smart_active', '1');
             smartWeakness = wmap;
             try {
                 generateTimetable();
@@ -1211,7 +1233,7 @@
             let aiText = '';
             try {
                 const data = await window.eduskillGroqFetch({
-                    model: 'openai/gpt-oss-120b',
+                    feature: 'coach',
                     messages: [
                         { role: 'system', content: 'You are a concise study coach. Reply in 2-3 short sentences of plain text, no markdown.' },
                         {

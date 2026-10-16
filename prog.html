@@ -5,6 +5,9 @@
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
+<script src="js/services/sync-shards.js"></script>
+<script src="js/domain/dates.js"></script>
+<script src="js/services/storage.js"></script>
 <script src="js/env.js"></script>
 <script src="js/eduskill-sync.js"></script>
 
@@ -140,9 +143,9 @@
                     <span id="metricTasksSub">today</span>
                 </div>
                 <div class="metric-card">
-                    <p><i class="fas fa-fire" style="color:#db2777;"></i> Subjects Added</p>
+                    <p><i class="fas fa-book-open" style="color:#db2777;"></i> Active Subjects</p>
                     <h3 id="metricStreak">0</h3>
-                    <span id="metricStreakSub">subjects</span>
+                    <span id="metricStreakSub">registered</span>
                 </div>
                 <div class="metric-card">
                     <p><i class="fas fa-bullseye" style="color:var(--accent-orange);"></i> Today's Completion</p>
@@ -209,10 +212,9 @@
     <script>
         // ── Today key ─────────────────────────────────────────────────────────
         function todayKey() {
-            const d = new Date();
-            return 'tasks_' + d.getFullYear() + '-' +
-                String(d.getMonth()+1).padStart(2,'0') + '-' +
-                String(d.getDate()).padStart(2,'0');
+            return (window.EduDates && window.EduDates.todayKey)
+                ? window.EduDates.todayKey()
+                : 'tasks_' + new Date().toISOString().slice(0, 10);
         }
 
         function escapeHTML(s) {
@@ -224,14 +226,19 @@
 
         // -- Load Metrics ------------------------------------------------------
         function loadMetrics() {
-            const tasks = JSON.parse(localStorage.getItem(todayKey()) || '[]');
+            const subjects = (window.EduStorage && window.EduStorage.readJSON)
+                ? window.EduStorage.readJSON('subjects', [])
+                : JSON.parse(localStorage.getItem('subjects') || '[]');
+            const tasks = (window.EduStorage && window.EduStorage.readJSON)
+                ? window.EduStorage.readJSON(todayKey(), [])
+                : JSON.parse(localStorage.getItem(todayKey()) || '[]');
             const done = tasks.filter(t => t.done).length;
             const total = tasks.length;
             const pct = total > 0 ? Math.round(done / total * 100) : 0;
 
             document.getElementById('metricTotalHours').textContent = total;
             document.getElementById('metricTasks').textContent      = done;
-            document.getElementById('metricStreak').textContent     = JSON.parse(localStorage.getItem('subjects') || '[]').length;
+            document.getElementById('metricStreak').textContent     = subjects.length;
             document.getElementById('metricAccuracy').textContent   = pct + '%';
         }
 
@@ -239,7 +246,9 @@
         // The topic chart is drawn by renderSubjectChart(); this only shows or
         // hides the "no subjects yet" message underneath it.
         function loadSubjectProgress() {
-            const subjects = JSON.parse(localStorage.getItem('subjects') || '[]');
+            const subjects = (window.EduStorage && window.EduStorage.readJSON)
+                ? window.EduStorage.readJSON('subjects', [])
+                : JSON.parse(localStorage.getItem('subjects') || '[]');
             const canvas   = document.getElementById('subjectTopicChart');
             const empty    = document.getElementById('subjectChartEmpty');
 
@@ -251,10 +260,18 @@
 
         // ── Badges ────────────────────────────────────────────────────────────
         function loadBadges() {
-            const subjects = JSON.parse(localStorage.getItem('subjects') || '[]');
-            const exams    = JSON.parse(localStorage.getItem('exams') || '[]');
+            const subjects = (window.EduStorage && window.EduStorage.readJSON)
+                ? window.EduStorage.readJSON('subjects', [])
+                : JSON.parse(localStorage.getItem('subjects') || '[]');
+            const exams    = (window.EduStorage && window.EduStorage.readJSON)
+                ? window.EduStorage.readJSON('exams', [])
+                : JSON.parse(localStorage.getItem('exams') || '[]');
             // Lifetime total of completed tasks (survives page reloads)
-            const done     = parseInt(localStorage.getItem('tasksCompletedTotal') || '0', 10) || 0;
+            const todayTasks = (window.EduStorage && window.EduStorage.readJSON)
+                ? window.EduStorage.readJSON(todayKey(), [])
+                : JSON.parse(localStorage.getItem(todayKey()) || '[]');
+            const storedTotal = parseInt(localStorage.getItem('tasksCompletedTotal') || '0', 10) || 0;
+            const done = Math.max(storedTotal, todayTasks.filter(t => t.done).length);
 
             const allBadges = [
                 { icon: 'fa-book', label: 'First Subject', desc: 'Added your first subject', earned: subjects.length >= 1 },
@@ -279,8 +296,12 @@
 
         // ── AI Insight (local, no API needed) ─────────────────────────────────
         function loadInsight() {
-            const subjects = JSON.parse(localStorage.getItem('subjects') || '[]');
-            const tasks    = JSON.parse(localStorage.getItem(todayKey()) || '[]');
+            const subjects = (window.EduStorage && window.EduStorage.readJSON)
+                ? window.EduStorage.readJSON('subjects', [])
+                : JSON.parse(localStorage.getItem('subjects') || '[]');
+            const tasks    = (window.EduStorage && window.EduStorage.readJSON)
+                ? window.EduStorage.readJSON(todayKey(), [])
+                : JSON.parse(localStorage.getItem(todayKey()) || '[]');
             const done     = tasks.filter(t => t.done).length;
             const pct      = tasks.length > 0 ? Math.round(done / tasks.length * 100) : 0;
 
@@ -317,10 +338,12 @@
             for (let i = 0; i < 7; i++) {
                 const d = new Date(monday);
                 d.setDate(monday.getDate() + i);
-                const key = 'tasks_' + d.getFullYear() + '-' +
-                    String(d.getMonth()+1).padStart(2,'0') + '-' +
-                    String(d.getDate()).padStart(2,'0');
-                const dayTasks = JSON.parse(localStorage.getItem(key) || '[]');
+                const key = (window.EduDates && window.EduDates.dateKey)
+                    ? 'tasks_' + window.EduDates.dateKey(d)
+                    : 'tasks_' + d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0');
+                const dayTasks = (window.EduStorage && window.EduStorage.readJSON)
+                    ? window.EduStorage.readJSON(key, [])
+                    : JSON.parse(localStorage.getItem(key) || '[]');
                 const doneCnt = dayTasks.filter(t => t.done).length;
                 data.push(doneCnt);
             }
