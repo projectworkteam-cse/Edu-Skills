@@ -7,8 +7,10 @@
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
 <script src="js/services/sync-shards.js"></script>
+<script src="js/domain/migrate.js"></script>
 <script src="js/domain/tasks.js"></script>
 <script src="js/services/storage.js"></script>
+<script src="js/services/ai-client.js"></script>
 <script src="js/lib/ui.js"></script>
 <script src="js/env.js"></script>
 <script src="js/eduskill-sync.js"></script>
@@ -846,9 +848,14 @@
             });
         }
 
+        let lastQuizSubjectSig = '';
         function initSubjectSelect() {
             const select = document.getElementById('quizSubject');
             const subjects = getSubjects();
+            const sig = JSON.stringify(subjects.map(s => [s.id, s.name, s.difficulty, (s.topics || []).map(t => [t.id || t.tid, t.topic, t.done])]));
+            if (sig === lastQuizSubjectSig && select.options.length > 1) return;
+            lastQuizSubjectSig = sig;
+
             const previous = select.value;
 
             if (!subjects.length) {
@@ -859,7 +866,9 @@
             select.innerHTML = '<option value="">Choose a subject...</option>' +
                 subjects.map(s => `<option value="${escapeHTML(s.id)}">${escapeHTML(s.name)} (${escapeHTML(s.difficulty || 'Medium')})</option>`).join('');
 
-            if (previous) select.value = previous;
+            if (previous && [...select.options].some(o => o.value === previous)) {
+                select.value = previous;
+            }
         }
 
         function onSubjectChange() {
@@ -1023,6 +1032,7 @@ Format:
                 currentQuiz = {
                     subjectId: subject.id,
                     subjectName: subject.name,
+                    topicId: topic.id || topic.tid || null,
                     topicName,
                     difficulty,
                     questions
@@ -1111,6 +1121,8 @@ Format:
             saveHistory({
                 id: Date.now(),
                 date: new Date().toISOString(),
+                subjectId: currentQuiz.subjectId,
+                topicId: currentQuiz.topicId || null,
                 subject: currentQuiz.subjectName,
                 topics: [currentQuiz.topicName],
                 score: correct,
@@ -1278,7 +1290,12 @@ Format:
             const data = (window.EduStorage && window.EduStorage.readJSON)
                 ? window.EduStorage.readJSON(HISTORY_KEY, [])
                 : [];
-            return Array.isArray(data) ? data : [];
+            const history = Array.isArray(data) ? data : [];
+            if (window.EduMigrate && typeof window.EduMigrate.migrateQuizHistory === 'function') {
+                const subjects = getSubjects();
+                return window.EduMigrate.migrateQuizHistory(history, subjects);
+            }
+            return history;
         }
 
         function saveHistory(record) {
@@ -1338,14 +1355,18 @@ Format:
 
             const subjects = {};
             const subjectOrder = [];
+            const allSubjects = getSubjects();
+            const subjectMap = new Map(allSubjects.map(s => [s.id, s]));
 
             history.forEach(r => {
-                const sName = r.subject || 'Unknown Subject';
-                if (!subjects[sName]) {
-                    subjects[sName] = { name: sName, topics: {}, topicOrder: [] };
-                    subjectOrder.push(sName);
+                const subObj = r.subjectId ? subjectMap.get(r.subjectId) : null;
+                const sKey = r.subjectId || r.subject || 'Unknown Subject';
+                const sDisplayName = subObj ? subObj.name : (r.subject || 'Unknown Subject');
+                if (!subjects[sKey]) {
+                    subjects[sKey] = { name: sDisplayName, topics: {}, topicOrder: [] };
+                    subjectOrder.push(sKey);
                 }
-                const subject = subjects[sName];
+                const subject = subjects[sKey];
                 const topicNames = (Array.isArray(r.topics) && r.topics.length) ? r.topics : ['General'];
 
                 topicNames.forEach(tName => {
@@ -1398,7 +1419,6 @@ Format:
 
         window.addEventListener('storage', () => {
             initSubjectSelect();
-            onSubjectChange();
             renderHistory();
         });
 

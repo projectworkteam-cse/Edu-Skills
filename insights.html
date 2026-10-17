@@ -2,16 +2,16 @@
 <html lang="en">
 
 <head>
-<!-- EDU-SKILL AI: per-user Firebase data isolation + cloud sync + AI helper -->
-<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-auth-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
-<script src="js/services/sync-shards.js"></script>
-<script src="js/services/storage.js"></script>
-<script src="js/services/ai-client.js"></script>
-<script src="js/lib/ui.js"></script>
-<script src="js/env.js"></script>
-<script src="js/eduskill-sync.js"></script>
+    <!-- EDU-SKILL AI: per-user Firebase data isolation + cloud sync + AI helper -->
+    <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-auth-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
+    <script src="js/services/sync-shards.js"></script>
+    <script src="js/services/storage.js"></script>
+    <script src="js/services/ai-client.js"></script>
+    <script src="js/lib/ui.js"></script>
+    <script src="js/env.js"></script>
+    <script src="js/eduskill-sync.js"></script>
 
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -138,9 +138,17 @@
             min-height: 16px;
         }
 
-        .status-msg.info { color: var(--text-sub); }
-        .status-msg.error { color: var(--red-text); }
-        .status-msg.ok { color: var(--accent-green); }
+        .status-msg.info {
+            color: var(--text-sub);
+        }
+
+        .status-msg.error {
+            color: var(--red-text);
+        }
+
+        .status-msg.ok {
+            color: var(--accent-green);
+        }
 
         .summary-line {
             font-size: 12.5px;
@@ -177,9 +185,17 @@
             box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
         }
 
-        .weak-item.sev-high { border-left-color: var(--red-text); }
-        .weak-item.sev-medium { border-left-color: var(--accent-orange); }
-        .weak-item.sev-low { border-left-color: var(--accent-green); }
+        .weak-item.sev-high {
+            border-left-color: var(--red-text);
+        }
+
+        .weak-item.sev-medium {
+            border-left-color: var(--accent-orange);
+        }
+
+        .weak-item.sev-low {
+            border-left-color: var(--accent-green);
+        }
 
         .weak-head {
             display: flex;
@@ -188,9 +204,19 @@
             gap: 12px;
         }
 
-        .weak-title { min-width: 0; }
-        .weak-title b { font-size: 13.5px; }
-        .weak-sub { font-size: 11px; color: var(--text-sub); margin-top: 3px; }
+        .weak-title {
+            min-width: 0;
+        }
+
+        .weak-title b {
+            font-size: 13.5px;
+        }
+
+        .weak-sub {
+            font-size: 11px;
+            color: var(--text-sub);
+            margin-top: 3px;
+        }
 
         .sev-badge {
             font-size: 10px;
@@ -202,9 +228,20 @@
             letter-spacing: 0.4px;
         }
 
-        .sev-badge.high { background: var(--red-bg); color: var(--red-text); }
-        .sev-badge.medium { background: var(--accent-orange-bg); color: var(--accent-orange); }
-        .sev-badge.low { background: var(--accent-green-bg); color: var(--accent-green); }
+        .sev-badge.high {
+            background: var(--red-bg);
+            color: var(--red-text);
+        }
+
+        .sev-badge.medium {
+            background: var(--accent-orange-bg);
+            color: var(--accent-orange);
+        }
+
+        .sev-badge.low {
+            background: var(--accent-green-bg);
+            color: var(--accent-green);
+        }
 
         .weak-bar-row {
             display: flex;
@@ -221,10 +258,23 @@
             overflow: hidden;
         }
 
-        .weak-bar-fill { height: 100%; border-radius: 10px; transition: width 0.5s ease; }
-        .sev-high .weak-bar-fill { background: linear-gradient(90deg, #f87171, #ef4444); }
-        .sev-medium .weak-bar-fill { background: linear-gradient(90deg, #fbbf24, #d97706); }
-        .sev-low .weak-bar-fill { background: linear-gradient(90deg, #4ade80, #16a34a); }
+        .weak-bar-fill {
+            height: 100%;
+            border-radius: 10px;
+            transition: width 0.5s ease;
+        }
+
+        .sev-high .weak-bar-fill {
+            background: linear-gradient(90deg, #f87171, #ef4444);
+        }
+
+        .sev-medium .weak-bar-fill {
+            background: linear-gradient(90deg, #fbbf24, #d97706);
+        }
+
+        .sev-low .weak-bar-fill {
+            background: linear-gradient(90deg, #4ade80, #16a34a);
+        }
 
         .weak-pct {
             font-size: 12px;
@@ -254,10 +304,17 @@
             margin-top: auto;
         }
 
-        .weak-ai i { color: var(--primary-purple); margin-top: 2px; }
+        .weak-ai i {
+            color: var(--primary-purple);
+            margin-top: 2px;
+        }
 
         /* ── READINESS ITEMS ────────────────────────────────────────────── */
-        .ready-list { display: flex; flex-direction: column; gap: 14px; }
+        .ready-list {
+            display: flex;
+            flex-direction: column;
+            gap: 14px;
+        }
 
         .ready-item {
             display: flex;
@@ -294,9 +351,20 @@
             color: var(--text-main);
         }
 
-        .ready-body { flex: 1; min-width: 0; }
-        .ready-body b { font-size: 13.5px; }
-        .ready-sub { font-size: 11px; color: var(--text-sub); margin-top: 3px; }
+        .ready-body {
+            flex: 1;
+            min-width: 0;
+        }
+
+        .ready-body b {
+            font-size: 13.5px;
+        }
+
+        .ready-sub {
+            font-size: 11px;
+            color: var(--text-sub);
+            margin-top: 3px;
+        }
 
         .ready-factors {
             display: flex;
@@ -324,10 +392,25 @@
             letter-spacing: 0.3px;
         }
 
-        .verdict-tag.ready { background: var(--accent-green-bg); color: var(--accent-green); }
-        .verdict-tag.ontrack { background: #eef2ff; color: var(--primary-blue); }
-        .verdict-tag.needs { background: var(--accent-orange-bg); color: var(--accent-orange); }
-        .verdict-tag.notready { background: var(--red-bg); color: var(--red-text); }
+        .verdict-tag.ready {
+            background: var(--accent-green-bg);
+            color: var(--accent-green);
+        }
+
+        .verdict-tag.ontrack {
+            background: #eef2ff;
+            color: var(--primary-blue);
+        }
+
+        .verdict-tag.needs {
+            background: var(--accent-orange-bg);
+            color: var(--accent-orange);
+        }
+
+        .verdict-tag.notready {
+            background: var(--red-bg);
+            color: var(--red-text);
+        }
 
         .ready-advice {
             font-size: 12px;
@@ -339,35 +422,86 @@
             padding: 8px 10px;
         }
 
-        .ready-advice i { color: var(--primary-purple); margin-right: 6px; }
+        .ready-advice i {
+            color: var(--primary-purple);
+            margin-right: 6px;
+        }
 
-        .hidden { display: none !important; }
+        .hidden {
+            display: none !important;
+        }
 
         @media (max-width: 640px) {
-            .page-body { padding: 16px; }
+            .page-body {
+                padding: 16px;
+            }
+
             .card-header button.btn-primary {
                 width: 100%;
                 justify-content: center;
             }
-            .ready-item { flex-direction: column; align-items: flex-start; }
-            .weak-list { grid-template-columns: 1fr; }
+
+            .ready-item {
+                flex-direction: column;
+                align-items: flex-start;
+            }
+
+            .weak-list {
+                grid-template-columns: 1fr;
+            }
         }
 
         @media (max-width: 480px) {
-            .page-body { padding: 10px; }
-            .page-title { font-size: 18px; }
-            .page-sub { font-size: 12px; margin-bottom: 14px; }
-            .card { padding: 14px; border-radius: 12px; margin-bottom: 14px; }
-            .card-title { font-size: 14px; }
-            .ready-item { padding: 12px; gap: 12px; }
-            .ready-gauge { width: 64px; height: 64px; }
-            .ready-gauge span { font-size: 14px; }
+            .page-body {
+                padding: 10px;
+            }
+
+            .page-title {
+                font-size: 18px;
+            }
+
+            .page-sub {
+                font-size: 12px;
+                margin-bottom: 14px;
+            }
+
+            .card {
+                padding: 14px;
+                border-radius: 12px;
+                margin-bottom: 14px;
+            }
+
+            .card-title {
+                font-size: 14px;
+            }
+
+            .ready-item {
+                padding: 12px;
+                gap: 12px;
+            }
+
+            .ready-gauge {
+                width: 64px;
+                height: 64px;
+            }
+
+            .ready-gauge span {
+                font-size: 14px;
+            }
         }
 
         @media (max-width: 340px) {
-            .page-body { padding: 8px; }
-            .card { padding: 10px; }
-            .page-title { font-size: 16px; }
+            .page-body {
+                padding: 8px;
+            }
+
+            .card {
+                padding: 10px;
+            }
+
+            .page-title {
+                font-size: 16px;
+            }
         }
     </style>
 </head>
@@ -379,7 +513,8 @@
             <i class="fas fa-brain" style="color: var(--primary-purple);"></i>
             <span>AI Learning Intelligence</span>
         </div>
-        <p class="page-sub">Finds your weak topics from quiz scores, progress and deadlines, and predicts how ready you are for each exam.</p>
+        <p class="page-sub">Finds your weak topics from quiz scores, progress and deadlines, and predicts how ready you
+            are for each exam.</p>
 
         <!-- WEAKNESS DETECTOR -->
         <section class="card">
@@ -387,7 +522,9 @@
                 <div class="card-title">
                     <i class="fas fa-triangle-exclamation" style="color: var(--accent-orange);"></i>
                     <span>Weakness Detector</span>
-                    <span id="weakStaleBadge" style="display:none; margin-left:8px; font-size:11px; font-weight:600; padding:2px 8px; border-radius:10px; background:#fef3c7; color:#b45309;"><i class="fas fa-arrows-rotate"></i> Out of date — Refresh</span>
+                    <span id="weakStaleBadge"
+                        style="display:none; margin-left:8px; font-size:11px; font-weight:600; padding:2px 8px; border-radius:10px; background:#fef3c7; color:#b45309;"><i
+                            class="fas fa-arrows-rotate"></i> Out of date — Refresh</span>
                 </div>
                 <button class="btn-primary" type="button" id="detectBtn" onclick="detectWeaknesses()">
                     <i class="fas fa-wand-magic-sparkles"></i> Detect Weak Areas
@@ -399,7 +536,9 @@
                 so your daily tasks target them.
             </p>
             <div class="summary-line hidden" id="weakSummary"></div>
-            <div id="weakList"><p class="empty-msg">Click <b>Detect Weak Areas</b> to analyse your study data.</p></div>
+            <div id="weakList">
+                <p class="empty-msg">Click <b>Detect Weak Areas</b> to analyse your study data.</p>
+            </div>
             <div class="status-msg info" id="weakStatus"></div>
         </section>
 
@@ -409,19 +548,25 @@
                 <div class="card-title">
                     <i class="fas fa-gauge-high" style="color: var(--primary-blue);"></i>
                     <span>Exam Readiness Predictor</span>
-                    <span id="readyStaleBadge" style="display:none; margin-left:8px; font-size:11px; font-weight:600; padding:2px 8px; border-radius:10px; background:#fef3c7; color:#b45309;"><i class="fas fa-arrows-rotate"></i> Out of date — Refresh</span>
+                    <span id="readyStaleBadge"
+                        style="display:none; margin-left:8px; font-size:11px; font-weight:600; padding:2px 8px; border-radius:10px; background:#fef3c7; color:#b45309;"><i
+                            class="fas fa-arrows-rotate"></i> Out of date — Refresh</span>
                 </div>
                 <button class="btn-primary" type="button" id="predictBtn" onclick="predictReadiness()">
                     <i class="fas fa-crystal-ball"></i> Predict Readiness
                 </button>
             </div>
             <p class="card-desc">
-                Estimated study preparedness based on your completed topics, quiz performance and days remaining before each exam.
+                Estimated study preparedness based on your completed topics, quiz performance and days remaining before
+                each exam.
             </p>
             <p style="font-size:11px;color:var(--text-sub);margin:-8px 0 14px;">
-                <i class="fas fa-circle-info"></i> Note: Readiness ratings are heuristic estimates designed to guide revision priorities, not certified exam outcome predictions.
+                <i class="fas fa-circle-info"></i> Note: Readiness ratings are heuristic estimates designed to guide
+                revision priorities, not certified exam outcome predictions.
             </p>
-            <div id="readyList"><p class="empty-msg">Click <b>Predict Readiness</b> to forecast your exams.</p></div>
+            <div id="readyList">
+                <p class="empty-msg">Click <b>Predict Readiness</b> to forecast your exams.</p>
+            </div>
             <div class="status-msg info" id="readyStatus"></div>
         </section>
 
@@ -440,7 +585,16 @@
         }
 
         function getJSON(key, fallback) {
-            return window.EduStorage ? window.EduStorage.readJSON(key, fallback) : fallback;
+            if (window.EduStorage && typeof window.EduStorage.readJSON === 'function') {
+                return window.EduStorage.readJSON(key, fallback);
+            }
+            try {
+                const raw = typeof localStorage !== 'undefined' ? localStorage.getItem(key) : null;
+                const v = raw ? JSON.parse(raw) : null;
+                return v === null || v === undefined ? fallback : v;
+            } catch (e) {
+                return fallback;
+            }
         }
 
         function todayKey() {
@@ -651,10 +805,10 @@
                 const obj = JSON.parse(text);
                 if (Array.isArray(obj)) return obj;
                 if (arrayKey && Array.isArray(obj[arrayKey])) return obj[arrayKey];
-            } catch (e) {}
+            } catch (e) { }
             const m = text.match(/\[[\s\S]*\]/);
             if (m) {
-                try { return JSON.parse(m[0]); } catch (e) {}
+                try { return JSON.parse(m[0]); } catch (e) { }
             }
             return [];
         }

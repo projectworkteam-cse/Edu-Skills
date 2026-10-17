@@ -1,7 +1,7 @@
-// tests/migrate.test.js - unit tests for schema v1 to v2 migration (V1-DATA-09)
+// tests/migrate.test.js - unit tests for schema v1 to v2 migration and quiz history migration (V1-DATA-09, V2-MED-19)
 const test = require('node:test');
 const assert = require('node:assert');
-const { migrateV1toV2 } = require('../public/js/domain/migrate.js');
+const { migrateV1toV2, migrateQuizHistory } = require('../public/js/domain/migrate.js');
 
 test('migrateV1toV2 assigns stable IDs to subjects, topics, and exams', () => {
   const v1State = {
@@ -54,4 +54,33 @@ test('migrateV1toV2 safely handles empty or non-object inputs', () => {
   assert.deepStrictEqual(migrateV1toV2(null), { schemaVersion: 2 });
   assert.deepStrictEqual(migrateV1toV2(undefined), { schemaVersion: 2 });
   assert.deepStrictEqual(migrateV1toV2({ schemaVersion: 2 }), { schemaVersion: 2 });
+});
+
+test('migrateQuizHistory links legacy name-based history to subject IDs (V2-MED-19)', () => {
+  const subjects = [
+    { id: 'sub_math', name: 'Mathematics', topics: [{ id: 'top_calc', name: 'Calculus' }] },
+    { id: 'sub_cs', name: 'Computer Science', topics: [{ id: 'top_algo', name: 'Algorithms' }] }
+  ];
+
+  const legacyHistory = [
+    { subject: 'Mathematics', topics: ['Calculus'], score: 90 },
+    { subject: 'computer science', topics: ['Algorithms'], score: 100 },
+    { subject: 'Unknown Subject', topics: ['General'], score: 50 },
+    { subjectId: 'already_set', subject: 'Mathematics', score: 80 }
+  ];
+
+  const migrated = migrateQuizHistory(legacyHistory, subjects);
+
+  assert.strictEqual(migrated[0].subjectId, 'sub_math');
+  assert.strictEqual(migrated[0].topicId, 'top_calc');
+
+  assert.strictEqual(migrated[1].subjectId, 'sub_cs');
+  assert.strictEqual(migrated[1].topicId, 'top_algo');
+
+  assert.strictEqual(migrated[2].subjectId, null);
+  assert.strictEqual(migrated[3].subjectId, 'already_set');
+
+  // Idempotency: running again changes nothing
+  const migratedTwice = migrateQuizHistory(migrated, subjects);
+  assert.deepStrictEqual(migrated, migratedTwice);
 });

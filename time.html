@@ -8,7 +8,9 @@
 <script src="js/services/sync-shards.js"></script>
 <script src="js/domain/dates.js"></script>
 <script src="js/domain/timetable-sig.js"></script>
+<script src="js/domain/insights.js"></script>
 <script src="js/services/storage.js"></script>
+<script src="js/services/ai-client.js"></script>
 <script src="js/lib/ui.js"></script>
 <script src="js/env.js"></script>
 <script src="js/eduskill-sync.js"></script>
@@ -859,11 +861,10 @@
         // Builds a map of "subject||topic" (lowercase) -> weakness score (0-100).
         function buildWeaknessMap() {
             try {
-                const rawWeak = (window.EduStorage && window.EduStorage.readJSON)
-                    ? window.EduStorage.readJSON('weakTopics', [])
+                const stored = (window.EduInsights && typeof window.EduInsights.readWeakTopics === 'function')
+                    ? window.EduInsights.readWeakTopics(window.EduStorage)
                     : [];
-                const stored = Array.isArray(rawWeak) ? rawWeak : (rawWeak && Array.isArray(rawWeak.result) ? rawWeak.result : []);
-                if (stored.length) {
+                if (stored && stored.length) {
                     const map = {};
                     stored.forEach(w => {
                         map[String(w.subject || '').toLowerCase() + '||' + String(w.topic || '').toLowerCase()] = Number(w.score) || 0;
@@ -923,6 +924,24 @@
 
         document.addEventListener('DOMContentLoaded', () => {
             loadSettings();
+
+            // V2-HIGH-11: Clear smart active flag ONLY when preference inputs change, not on rebuild
+            const prefInputs = [
+                document.getElementById('studyShift'),
+                document.getElementById('morningStart'),
+                document.getElementById('eveningStart'),
+                document.getElementById('morningHours'),
+                document.getElementById('eveningHours'),
+                document.getElementById('slotDuration')
+            ].filter(Boolean);
+
+            prefInputs.forEach(el => {
+                el.addEventListener('change', () => {
+                    saveSettings();
+                    localStorage.removeItem('timetable_smart_active');
+                    buildTimetable();
+                });
+            });
 
             let buildInitialized = false;
             let lastDataSignature = '';
@@ -1035,7 +1054,6 @@
                 slot: document.getElementById('slotDuration').value
             };
             localStorage.setItem('timetable_preferences', JSON.stringify(prefs));
-            localStorage.removeItem('timetable_smart_active');
         }
 
         function getScheduleInputSignature() {
@@ -1048,21 +1066,14 @@
             const prefs = (window.EduStorage && window.EduStorage.readJSON)
                 ? window.EduStorage.readJSON('timetable_preferences', {})
                 : {};
-            const localDate = (window.EduDates && typeof window.EduDates.dateKey === 'function')
-                ? window.EduDates.dateKey()
-                : (function () {
-                    const d = new Date();
-                    const pad = n => String(n).padStart(2, '0');
-                    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
-                })();
             const isSmart = localStorage.getItem('timetable_smart_active') === '1';
 
             if (window.EduTimetableSig && typeof window.EduTimetableSig.scheduleSignature === 'function') {
-                return window.EduTimetableSig.scheduleSignature(subjects, exams, prefs, localDate, isSmart);
+                return window.EduTimetableSig.scheduleSignature(subjects, exams, prefs, isSmart);
             }
             const s = (subjects || []).map(x => [x.id, x.name, x.difficulty, (x.topics || []).map(t => (t.name || t.topic) + ':' + (t.minutes || 30)).join(',')].join('|')).join(';');
             const e = (exams || []).map(x => [x.subject, x.date].join('|')).join(';');
-            return [s, e, JSON.stringify(prefs || {}), localDate, isSmart ? 'smart' : ''].join('::');
+            return [s, e, JSON.stringify(prefs || {}), isSmart ? 'smart' : ''].join('::');
         }
 
         function buildTimetable() {

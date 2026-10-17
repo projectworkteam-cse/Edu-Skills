@@ -1,7 +1,7 @@
-// tests/ai-client.test.js - verifies EduAI.ask error handling, retries, and parseAiJson (V1-AI-01, V1-AI-02, V1-AI-04)
+// tests/ai-client.test.js - verifies EduAI.ask error handling, retries, and parseAiJson (V1-AI-01, V1-AI-02, V1-AI-04, V2-MED-20)
 const test = require('node:test');
 const assert = require('node:assert');
-const { ask, parseAiJson, AiError } = require('../js/services/ai-client.js');
+const { ask, parseAiJson, AiError, AiParseError } = require('../js/services/ai-client.js');
 
 test('parseAiJson extracts valid JSON from markdown code fences and cleans strings', () => {
   const markdownJson = '```json\n{"topics": ["Calculus", "Physics"], "count": 2}\n```';
@@ -14,14 +14,25 @@ test('parseAiJson validates against schema check function', () => {
   const valid = parseAiJson(raw, (d) => Array.isArray(d.items) && d.items.length === 3);
   assert.ok(valid);
 
-  const invalid = parseAiJson(raw, (d) => d.missingField === true);
-  assert.strictEqual(invalid, null);
+  assert.throws(
+    () => parseAiJson(raw, (d) => d.missingField === true),
+    (err) => err instanceof AiParseError && err.message === 'wrong shape'
+  );
 });
 
-test('parseAiJson returns null on unparseable garbage without throwing', () => {
-  assert.strictEqual(parseAiJson('not a json at all'), null);
-  assert.strictEqual(parseAiJson(''), null);
-  assert.strictEqual(parseAiJson(null), null);
+test('parseAiJson throws AiParseError on unparseable garbage or empty text (V2-MED-20)', () => {
+  assert.throws(
+    () => parseAiJson('not a json at all'),
+    (err) => err instanceof AiParseError && err.message === 'not JSON'
+  );
+  assert.throws(
+    () => parseAiJson(''),
+    (err) => err instanceof AiParseError && err.message === 'not JSON'
+  );
+  assert.throws(
+    () => parseAiJson(null),
+    (err) => err instanceof AiParseError && err.message === 'not JSON'
+  );
 });
 
 test('EduAI.ask handles successful response', async () => {

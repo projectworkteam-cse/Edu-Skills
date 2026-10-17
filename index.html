@@ -10,6 +10,7 @@
 <script src="js/domain/migrate.js"></script>
 <script src="js/domain/dates.js"></script>
 <script src="js/domain/tasks.js"></script>
+<script src="js/domain/insights.js"></script>
 <script src="js/services/storage.js"></script>
 <script src="js/services/ai-client.js"></script>
 <script src="js/lib/ui.js"></script>
@@ -1603,11 +1604,10 @@
         // quiz scores and topic completion.
         function getWeakTopics() {
             try {
-                const rawWeak = (window.EduStorage && window.EduStorage.readJSON)
-                    ? window.EduStorage.readJSON('weakTopics', [])
+                const stored = (window.EduInsights && typeof window.EduInsights.readWeakTopics === 'function')
+                    ? window.EduInsights.readWeakTopics(window.EduStorage)
                     : [];
-                const stored = Array.isArray(rawWeak) ? rawWeak : (rawWeak && Array.isArray(rawWeak.result) ? rawWeak.result : []);
-                if (stored.length) return stored.slice(0, 8);
+                if (stored && stored.length) return stored.slice(0, 8);
             } catch (e) {}
 
             const subjects = (window.EduStorage && window.EduStorage.readJSON)
@@ -1661,9 +1661,9 @@
             // Subject context with difficulty and per-topic done status
             const context = savedSubjects.map(s => {
                 const topicsStr = s.topics
-                    ? s.topics.map(t => `${t.topic || t.name}${t.done ? ' [COMPLETED]' : ''} (${t.minutes || 30} mins)`).join(', ')
+                    ? s.topics.map(t => `${t.topic || t.name}${t.id ? ' [id: ' + t.id + ']' : ''}${t.done ? ' [COMPLETED]' : ''} (${t.minutes || 30} mins)`).join(', ')
                     : 'General study';
-                return `- Subject: ${s.name} (${s.difficulty} difficulty) | Total study time: ${s.totalMinutes || 0} mins | Topics: ${topicsStr}`;
+                return `- Subject: ${s.name} (id: ${s.id || s.sid || ''}) (${s.difficulty} difficulty) | Total study time: ${s.totalMinutes || 0} mins | Topics: ${topicsStr}`;
             }).join('\n');
 
             // Upcoming exams (priority signal)
@@ -1724,9 +1724,9 @@ INSTRUCTIONS:
 1. Never repeat tasks that are already in today's list or topics marked [COMPLETED].
 2. Prioritize the WEAK TOPICS above - give at least one task to each of the top weak areas.
 3. Prioritize subjects marked Hard/Medium difficulty and subjects with the nearest exams. Give them the most tasks.
-4. Use topic names from the subject list wherever possible.
+4. Use topic names and topic IDs from the subject list wherever possible.
 5. Align the tasks with the weekly timetable if one exists (e.g. focus on subjects scheduled for today).
-6. Return ONLY a valid JSON array of string tasks, like: ["Task 1", "Task 2", "Task 3"].
+6. Return ONLY a valid JSON array of objects with title and topicId, like: [{"title": "Task 1", "topicId": "topic_id_here"}]. If no specific topic applies, set topicId to null.
 7. Do NOT include markdown codeblocks or extra explanations.
 `;
 
@@ -1741,9 +1741,16 @@ INSTRUCTIONS:
                 });
 
                 let rawResponse = data.choices?.[0]?.message?.content || '[]';
-                const aiTasks = (window.EduAI && window.EduAI.parseAiJson)
-                    ? window.EduAI.parseAiJson(rawResponse)
-                    : JSON.parse(rawResponse.replace(/```json/g, '').replace(/```/g, '').trim());
+                let aiTasks = [];
+                try {
+                    aiTasks = (window.EduAI && window.EduAI.parseAiJson)
+                        ? window.EduAI.parseAiJson(rawResponse, Array.isArray)
+                        : JSON.parse(rawResponse.replace(/```json/g, '').replace(/```/g, '').trim());
+                } catch (parseErr) {
+                    console.warn('AI task JSON parse failed:', parseErr);
+                    showTaskNotification('AI did not return valid task data. Please try again.');
+                    return;
+                }
 
                 if (Array.isArray(aiTasks) && aiTasks.length > 0) {
                     let currentTasks = loadTasks();
@@ -1797,9 +1804,7 @@ INSTRUCTIONS:
             t.done = !t.done;
             if (!t.done) t.hidden = false;
 
-            // V1-FUNC-07: Derive count directly from tasks list, no drifting ++ / --
-            const total = tasks.filter(x => x.done).length;
-            localStorage.setItem('tasksCompletedTotal', String(total));
+            // V2-HIGH-12: Total completed tasks derived dynamically from stored task shards
 
             // V1-FUNC-01: Match topic by stable ID first, with exact-name fallback for legacy unlinked tasks
             const subjects = (window.EduStorage && window.EduStorage.readJSON)

@@ -1,5 +1,5 @@
 // js/services/ai-client.js - the only function pages use to call AI: EduAI.ask(feature, messages, opts)
-// Also provides EduAI.parseAiJson(text, schemaCheck) for strict JSON validation (V1-AI-01, V1-AI-02, V1-AI-04).
+// Also provides EduAI.parseAiJson(text, schemaCheck) for strict JSON validation (V1-AI-01, V1-AI-02, V1-AI-04, V2-MED-20).
 (function (root) {
   class AiError extends Error {
     constructor(status, code, message) {
@@ -7,6 +7,13 @@
       this.name = 'AiError';
       this.status = status;
       this.code = code;
+    }
+  }
+
+  class AiParseError extends Error {
+    constructor(message) {
+      super(message);
+      this.name = 'AiParseError';
     }
   }
 
@@ -53,7 +60,11 @@
 
         const data = await res.json().catch(() => ({}));
         if (res.ok) {
-          return String(data.choices?.[0]?.message?.content || '');
+          const content = String(data.choices?.[0]?.message?.content || '').trim();
+          if (!content) {
+            throw new AiError(502, 'empty', 'The AI returned an empty answer. Please retry.');
+          }
+          return content;
         }
 
         const retryable = res.status === 429 || res.status >= 502;
@@ -83,15 +94,11 @@
     }
   }
 
-  // Parses JSON from AI response text, stripping markdown code fences, and validates against optional schema check
-  function parseAiJson(text, schemaCheck) {
-    if (!text || typeof text !== 'string') return null;
+  function extractJson(text) {
+    if (!text || typeof text !== 'string') return '';
     let cleaned = text.trim();
-
-    // Strip markdown code fences (```json ... ``` or ``` ...)
     cleaned = cleaned.replace(/^```(?:json)?\s*/i, '').replace(/```\s*$/i, '').trim();
 
-    // Find bounding JSON array or object
     const firstBracket = cleaned.indexOf('[');
     const firstBrace = cleaned.indexOf('{');
     let startIdx = -1;
@@ -108,19 +115,51 @@
     if (startIdx !== -1 && endIdx > startIdx) {
       cleaned = cleaned.slice(startIdx, endIdx + 1);
     }
-
-    try {
-      const parsed = JSON.parse(cleaned);
-      if (typeof schemaCheck === 'function') {
-        return schemaCheck(parsed) ? parsed : null;
-      }
-      return parsed;
-    } catch (_) {
-      return null;
-    }
+    return cleaned;
   }
 
-  const api = { ask, parseAiJson, AiError };
-  if (typeof module !== 'undefined' && module.exports) module.exports = api;
-  else root.EduAI = api;
+  // Parses JSON from AI response, throwing a typed AiParseError on invalid JSON or wrong shape (V2-MED-20)
+  function parseAiJson(text, schemaCheck) {
+    const raw = extractJson(text);
+    if (!raw) throw new AiParseError('not JSON');
+    let parsed;
+    try {
+      parsed = JSON.parse(raw);
+    } catch (_) {
+      throw new AiParseError('not JSON');
+    }
+    if (typeof schemaCheck === 'function' && !schemaCheck(parsed)) {
+      throw new AiParseError('wrong shape');
+    }
+    return parsed;
+  }
+
+  const eduskillGroqFetch = async function (payload) {
+    if (!payload || typeof payload !== 'object') {
+      throw new Error('Invalid AI request payload.');
+    }
+    const feature = payload.feature || 'legacy';
+    const messages = payload.messages || [];
+    const temperature = payload.temperature;
+
+    const content = await ask(feature, messages, {
+      temperature,
+      timeoutMs: 30000,
+      retries: 1
+    });
+    return {
+      choices: [{
+        message: { content },
+        finish_reason: 'stop'
+      }]
+    };
+  };
+
+  const api = { ask, parseAiJson, AiError, AiParseError, eduskillGroqFetch };
+  if (typeof module !== 'undefined' && module.exports) {
+    module.exports = api;
+  } else {
+    root.EduAI = api;
+    root.eduskillGroqFetch = eduskillGroqFetch;
+  }
 })(typeof window !== 'undefined' ? window : globalThis);

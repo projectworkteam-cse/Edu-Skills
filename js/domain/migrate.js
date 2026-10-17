@@ -75,6 +75,35 @@
     return out;
   }
 
-  const api = { migrateV1toV2 };
+  // Idempotent migration linking quiz history items to subject IDs (V2-MED-19)
+  function migrateQuizHistory(history, subjects) {
+    if (!Array.isArray(history)) return [];
+    const byName = new Map();
+    (subjects || []).forEach(s => {
+      if (s && s.name) byName.set(String(s.name).trim().toLowerCase(), s);
+    });
+
+    return history.map(h => {
+      if (!h || typeof h !== 'object') return h;
+      if (h.subjectId) return h;
+      const sub = byName.get(String(h.subject || '').trim().toLowerCase());
+      const subjectId = sub ? (sub.id || sub.sid) : null;
+      let topicId = h.topicId || null;
+      if (!topicId && sub && Array.isArray(sub.topics)) {
+        const hTopic = Array.isArray(h.topics) ? h.topics[0] : h.topic;
+        if (hTopic) {
+          const top = sub.topics.find(t => String(t.name || t.topic).trim().toLowerCase() === String(hTopic).trim().toLowerCase());
+          if (top) topicId = top.id || top.tid || null;
+        }
+      }
+      return {
+        ...h,
+        subjectId: subjectId || null,
+        topicId: topicId || null
+      };
+    });
+  }
+
+  const api = { migrateV1toV2, migrateQuizHistory };
   if (typeof module !== 'undefined' && module.exports) module.exports = api; else root.EduMigrate = api;
 })(typeof window !== 'undefined' ? window : globalThis);

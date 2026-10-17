@@ -7,6 +7,7 @@
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
 <script src="js/services/sync-shards.js"></script>
 <script src="js/domain/dates.js"></script>
+<script src="js/domain/tasks.js"></script>
 <script src="js/services/storage.js"></script>
 <script src="js/lib/ui.js"></script>
 <script src="js/env.js"></script>
@@ -269,12 +270,23 @@
             const exams    = (window.EduStorage && window.EduStorage.readJSON)
                 ? window.EduStorage.readJSON('exams', [])
                 : [];
-            // Lifetime total of completed tasks (survives page reloads)
-            const todayTasks = (window.EduStorage && window.EduStorage.readJSON)
-                ? window.EduStorage.readJSON(todayKey(), [])
-                : [];
-            const storedTotal = parseInt(localStorage.getItem('tasksCompletedTotal') || '0', 10) || 0;
-            const done = Math.max(storedTotal, todayTasks.filter(t => t.done).length);
+            // Lifetime total of completed tasks across all daily task shards (V2-HIGH-12)
+            let done = 0;
+            if (window.EduTasks && typeof window.EduTasks.countCompleted === 'function' && typeof localStorage !== 'undefined') {
+                const rawKeys = Object.keys(localStorage);
+                const taskKeys = rawKeys.filter(k => /^tasks_\d{4}[-_]\d{2}[-_]\d{2}$/.test(k.replace(/^eduskill_user_.*?__/, '')));
+                const derived = window.EduTasks.countCompleted(
+                    (k) => (window.EduStorage && window.EduStorage.readJSON) ? window.EduStorage.readJSON(k, []) : [],
+                    taskKeys
+                );
+                const storedTotal = parseInt(localStorage.getItem('tasksCompletedTotal') || '0', 10) || 0;
+                done = Math.max(derived, storedTotal);
+            } else {
+                const todayTasks = (window.EduStorage && window.EduStorage.readJSON)
+                    ? window.EduStorage.readJSON(todayKey(), [])
+                    : [];
+                done = todayTasks.filter(t => t.done).length;
+            }
 
             const allBadges = [
                 { icon: 'fa-book', label: 'First Subject', desc: 'Added your first subject', earned: subjects.length >= 1 },

@@ -1,4 +1,4 @@
-// public/js/domain/timetable-sig.js - decides WHEN the timetable must be rebuilt (V1-FUNC-09).
+// public/js/domain/timetable-sig.js - decides WHEN the timetable must be rebuilt (V1-FUNC-09, V2-HIGH-11).
 (function (root) {
   function hash(str) {
     let h = 5381;
@@ -6,9 +6,16 @@
     return (h >>> 0).toString(36);
   }
 
-  // Only structure matters: subject/topic names+minutes, exam dates, preferences, smart flag and the LOCAL date.
-  // Topic "done" flags are deliberately excluded; completing a topic should not reshuffle the timetable.
-  function scheduleSignature(subjects, exams, prefs, localDate, smart = false) {
+  // Only structure matters: subject/topic names+minutes, exam dates, preferences, and smart flag.
+  // Today's date is excluded so the timetable survives across calendar days (V2-HIGH-11).
+  function scheduleSignature(subjects, exams, prefs, smart = false) {
+    // Backwards-compatible if caller passed 5 arguments: (subjects, exams, prefs, localDate, smart)
+    if (arguments.length >= 5) {
+      smart = Boolean(arguments[4]);
+    } else if (typeof smart !== 'boolean' && typeof arguments[3] === 'boolean') {
+      smart = arguments[3];
+    }
+
     const s = (subjects || []).map(x => [
       x.id || x.sid,
       x.name,
@@ -17,7 +24,7 @@
     ].join('|')).join(';');
 
     const e = (exams || []).map(x => [x.subject || x.subjectName, x.date].join('|')).join(';');
-    return hash([s, e, JSON.stringify(prefs || {}), localDate, smart ? 'smart' : ''].join('::'));
+    return hash([s, e, JSON.stringify(prefs || {}), smart ? 'smart' : ''].join('::'));
   }
 
   const api = { scheduleSignature, hash };

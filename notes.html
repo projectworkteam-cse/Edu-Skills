@@ -464,21 +464,32 @@
         }
 
         // ── SUBJECT / TOPIC SELECTS ─────────────────────────────────────────
+        let lastSubjectSig = '';
         function initSubjectSelect() {
             const sel = document.getElementById('noteSubject');
+            const topicSel = document.getElementById('noteTopic');
             const subjects = getJSON(SUBJECTS_KEY, []);
-            const prev = sel.value;
+            const sig = JSON.stringify(subjects.map(s => [s.id || s.sid, s.name, (s.topics || []).map(t => t.topic || t.name)]));
+            if (sig === lastSubjectSig && sel.options.length > 1) return;
+            lastSubjectSig = sig;
+
+            const prevSubject = sel.value;
+            const prevTopic = topicSel ? topicSel.value : '';
+
             sel.innerHTML = '<option value="">Select subject...</option>' +
-                subjects.map((s, i) => `<option value="${i}">${esc(s.name)}</option>`).join('');
-            if (prev && subjects[prev]) sel.value = prev;
-            onSubjectChange();
+                subjects.map(s => `<option value="${esc(s.id || s.sid)}">${esc(s.name)}</option>`).join('');
+
+            if (prevSubject && [...sel.options].some(o => o.value === prevSubject)) {
+                sel.value = prevSubject;
+            }
+            onSubjectChange(prevTopic);
         }
 
-        function onSubjectChange() {
+        function onSubjectChange(restoreTopic = null) {
             const subjects = getJSON(SUBJECTS_KEY, []);
-            const sIdx = document.getElementById('noteSubject').value;
+            const sId = document.getElementById('noteSubject').value;
             const topicSel = document.getElementById('noteTopic');
-            const subject = subjects[sIdx];
+            const subject = subjects.find(s => String(s.id || s.sid) === String(sId));
 
             if (!subject) {
                 topicSel.innerHTML = '<option value="">Select topic...</option>';
@@ -487,8 +498,16 @@
 
             const topics = Array.isArray(subject.topics) ? subject.topics : [];
             topicSel.innerHTML = topics.length
-                ? topics.map(t => `<option value="${esc(t.topic)}">${esc(t.topic)}</option>`).join('')
+                ? topics.map(t => {
+                    const name = t.topic || t.name || 'General';
+                    return `<option value="${esc(name)}">${esc(name)}</option>`;
+                }).join('')
                 : '<option value="">General topics</option>';
+
+            const keep = (typeof restoreTopic === 'string' && restoreTopic) ? restoreTopic : topicSel.value;
+            if (keep && [...topicSel.options].some(o => o.value === keep)) {
+                topicSel.value = keep;
+            }
         }
 
         function isValidNotesObject(obj) {
@@ -514,8 +533,8 @@
             const btn = document.getElementById('generateNotesBtn');
 
             const subjects = getJSON(SUBJECTS_KEY, []);
-            const sIdx = document.getElementById('noteSubject').value;
-            const subject = subjects[sIdx];
+            const sId = document.getElementById('noteSubject').value;
+            const subject = subjects.find(s => String(s.id || s.sid) === String(sId));
             const style = document.getElementById('noteStyle').value || 'Concise summary';
 
             let material = document.getElementById('noteMaterial').value.trim();
@@ -574,9 +593,14 @@ Match the structure, depth and wording to the "${style}" style. Do not add any t
                 });
 
                 const raw = data.choices?.[0]?.message?.content || '';
-                const parsed = (window.EduAI && typeof window.EduAI.parseAiJson === 'function')
-                    ? window.EduAI.parseAiJson(raw, isValidNotesObject)
-                    : parseJSONObject(raw);
+                let parsed = null;
+                try {
+                    parsed = (window.EduAI && typeof window.EduAI.parseAiJson === 'function')
+                        ? window.EduAI.parseAiJson(raw, isValidNotesObject)
+                        : parseJSONObject(raw);
+                } catch (pe) {
+                    throw new Error('AI returned an invalid notes structure. Please try again.');
+                }
 
                 if (!parsed || !isValidNotesObject(parsed)) {
                     throw new Error('AI returned an invalid notes structure. Please try again.');

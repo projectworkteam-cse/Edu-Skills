@@ -1,9 +1,9 @@
-// public/js/domain/tasks.js - tasks are linked to topics by ID, never by guessing from text (V1-FUNC-01, V1-FUNC-02).
+// public/js/domain/tasks.js - tasks are linked to topics by ID, never by guessing from text (V1-FUNC-01, V1-FUNC-02, V2-HIGH-12, V2-MED-19).
 (function (root) {
   const uid = (p = 'tsk') => p + '_' + Math.random().toString(36).slice(2, 10) + Date.now().toString(36).slice(-4);
   const clean = (s, n = 200) => String(s == null ? '' : s).replace(/\s+/g, ' ').trim().slice(0, n);
 
-  // AI replies are untrusted. Accept ["text", ...] or [{task, topic}, ...]; return only well-formed tasks.
+  // AI replies are untrusted. Accept ["text", ...] or [{title, topicId}, ...]; return only well-formed tasks.
   function normalizeAiTasks(raw, topics = [], existingTexts = []) {
     if (!Array.isArray(raw)) return [];
     const byName = new Map();
@@ -17,7 +17,7 @@
 
     for (const item of raw) {
       if (!item) continue;
-      const text = clean(typeof item === 'string' ? item : (item.task || item.text || item.title), 200);
+      const text = clean(typeof item === 'string' ? item : (item.title || item.task || item.text), 200);
       if (!text) continue;
       const key = text.toLowerCase();
       if (seen.has(key)) continue;
@@ -25,11 +25,27 @@
 
       let topic = null;
       if (typeof item === 'object') {
-        const topicName = clean(item.topic || item.topicName || '', 120).toLowerCase();
-        if (topicName && byName.has(topicName)) {
-          topic = byName.get(topicName);
-        } else if (item.tid) {
-          topic = (topics || []).find(t => (t.id === item.tid || t.tid === item.tid));
+        const tid = item.topicId || item.tid;
+        if (tid) {
+          topic = (topics || []).find(t => (t.id === tid || t.tid === tid));
+        }
+        if (!topic) {
+          const topicName = clean(item.topic || item.topicName || '', 120).toLowerCase();
+          if (topicName && byName.has(topicName)) {
+            topic = byName.get(topicName);
+          }
+        }
+      } else if (typeof item === 'string') {
+        const strKey = clean(item, 120).toLowerCase();
+        if (byName.has(strKey)) {
+          topic = byName.get(strKey);
+        } else {
+          for (const [tName, tObj] of byName.entries()) {
+            if (tName.length >= 3 && (strKey === tName || strKey.includes(tName))) {
+              topic = tObj;
+              break;
+            }
+          }
         }
       }
 
@@ -64,7 +80,17 @@
     return n;
   }
 
-  const api = { normalizeAiTasks, newManualTask, completeLinkedTasks };
+  // Lifetime total of completed tasks derived from all task keys (V2-HIGH-12)
+  function countCompleted(read, keys) {
+    if (typeof read !== 'function' || !Array.isArray(keys)) return 0;
+    return keys.reduce((total, key) => {
+      const tasks = read(key) || [];
+      if (!Array.isArray(tasks)) return total;
+      return total + tasks.filter(t => t && t.done).length;
+    }, 0);
+  }
+
+  const api = { normalizeAiTasks, newManualTask, completeLinkedTasks, countCompleted };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.EduTasks = api;
 })(typeof window !== 'undefined' ? window : globalThis);
