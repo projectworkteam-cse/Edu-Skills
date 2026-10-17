@@ -59,6 +59,29 @@
   let lastSyncTime = null;
   let syncStatus = 'synced'; // 'synced' | 'syncing' | 'dirty' | 'offline' | 'error'
   const dirtyShards = new Set();
+  const loadedShards = new Set(); // V2-CRIT-05: Shards read OK from cloud
+
+  // V2-MED-13: Raw keys that should never leak between accounts
+  const RAW_KEYS = ['userName', 'userEmail', 'username', 'userRole', 'studentId', 'userPhoto'];
+  function purgeRaw() {
+    RAW_KEYS.forEach(k => {
+      try { nativeRemove.call(window.localStorage, k); } catch (_) {}
+    });
+  }
+
+  let hydrateRetryTimer = null;
+  let hydrateRetryCount = 0;
+  function scheduleHydrateRetry(user) {
+    clearTimeout(hydrateRetryTimer);
+    if (hydrateRetryCount >= 3) return;
+    const delays = [2000, 5000, 15000];
+    const delay = delays[hydrateRetryCount++] || 15000;
+    hydrateRetryTimer = setTimeout(() => {
+      if (!hydrated && uid === user.uid) {
+        hydrateCloud(user);
+      }
+    }, delay);
+  }
 
   function physicalKey(key) {
     return PREFIX + uid + '__' + key;
@@ -312,8 +335,34 @@
         }
       });
 
-      // Write each shard WITHOUT merge: true so deleted keys stay deleted (V1-DATA-02)
       for (const shardId of shardsToSync) {
+        // V2-CRIT-05: Ensure shard was loaded before writing; if not, read and merge first
+        if (!loadedShards.has(shardId)) {
+          try {
+            const snap = await db.collection('users').doc(uid).collection('app').doc(shardId).get();
+            loadedShards.add(shardId);
+            if (snap.exists) {
+              const sData = snap.data() || {};
+              const cloudItems = sData.data || {};
+              const cloudMeta = sData.meta || {};
+              const shardDocAt = sData.updatedAt && typeof sData.updatedAt.toMillis === 'function' ? sData.updatedAt.toMillis() : 0;
+              for (const [k, cloudVal] of Object.entries(cloudItems)) {
+                const localAt = meta[k] || 0;
+                const cloudAt = cloudMeta[k] || shardDocAt;
+                if (cloudAt > localAt) {
+                  const v = typeof cloudVal === 'string' ? cloudVal : JSON.stringify(cloudVal);
+                  nativeSet.call(window.localStorage, physicalKey(k), v);
+                  meta[k] = cloudAt;
+                }
+              }
+            }
+          } catch (readErr) {
+            console.warn(`[sync] Save paused for ${shardId}: cloud not reachable`, readErr);
+            emitSyncStatus('error', `Save paused: cloud not reachable (${shardId})`);
+            continue; // Skip writing this shard to avoid overwriting unread data
+          }
+        }
+
         const bucket = shardBuckets[shardId];
         const shardPayload = {
           data: bucket.data,
@@ -328,7 +377,8 @@
           safeDispatch('eduskill-quota-warning', { shard: shardId, currentBytes: jsonStr.length, maxBytes: 900000 });
         }
 
-        await db.collection('users').doc(uid).collection('app').doc(shardId).set(shardPayload);
+        // ponytail: merge:true keeps cross-device keys; deletes use an explicit tombstone list (see V1-DATA-02 notes)
+        await db.collection('users').doc(uid).collection('app').doc(shardId).set(shardPayload, { merge: true });
         dirtyShards.delete(shardId);
       }
 
@@ -386,6 +436,7 @@
       for (const shardId of knownShards) {
         try {
           const snap = await db.collection('users').doc(uid).collection('app').doc(shardId).get();
+          loadedShards.add(shardId);
           if (snap.exists) {
             hasShardData = true;
             const sData = snap.data() || {};
@@ -411,11 +462,12 @@
           }
         } catch (shardErr) {
           console.warn(`[sync] Could not read shard ${shardId}:`, shardErr.message);
+          throw new Error(`Failed to load shard: ${shardId}`);
         }
       }
 
       // Legacy fallback: if shards are empty, import from legacy app/state doc
-      if (!hasShardData) {
+      if (!hasShardData && loadedShards.size > 0) {
         try {
           const legacySnap = await db.collection('users').doc(uid).collection('app').doc('state').get();
           if (legacySnap.exists && legacySnap.data() && legacySnap.data().data) {
@@ -478,6 +530,7 @@
       pruneOldData();
 
       hydrated = true;
+      hydrateRetryCount = 0;
       emitSyncStatus('synced');
       safeDispatch('eduskill-cloud-ready', { uid: uid });
       safeDispatch('eduskill:hydrated', { uid: uid });
@@ -495,11 +548,13 @@
       }
     } catch (e) {
       console.warn('[sync] Cloud load failed:', e.message);
-      hydrated = true;
-      emitSyncStatus('error', e.message);
+      // V2-CRIT-05: Lock writes on failure
+      hydrated = false;
+      emitSyncStatus('error', 'Cloud load failed: ' + e.message);
       if (typeof window.dismissBootLoader === 'function') {
         window.dismissBootLoader();
       }
+      scheduleHydrateRetry(user);
     }
   }
 
@@ -565,19 +620,20 @@
     }
   };
 
-  // 7. Honest Workspace Reset (V1-DATA-07)
+  // 7. Honest Workspace Reset (V1-DATA-07, V2-HIGH-09)
   window.eduskillResetWorkspace = async function () {
     if (!uid || !db) return false;
     clearTimeout(window.__eduskillSyncTimer);
 
     try {
-      // Delete all cloud app shards
-      const shards = ['core', 'quiz', 'timetable', 'notes', 'state'];
+      // V2-HIGH-09: Enumerate and delete all cloud app shards including tasks_YYYY_MM
+      const col = db.collection('users').doc(uid).collection('app');
+      const snap = await col.get();
       const batch = db.batch();
-      for (const s of shards) {
-        batch.delete(db.collection('users').doc(uid).collection('app').doc(s));
-      }
+      snap.forEach(d => batch.delete(d.ref));
+      batch.delete(col.doc('state'));
       await batch.commit();
+      loadedShards.clear();
     } catch (e) {
       console.warn('[sync] Cloud reset error:', e.message);
       // Honest failure: do NOT clear local data if cloud delete failed
@@ -595,7 +651,7 @@
     return true;
   };
 
-  // 8. Honest Logout with Complete Key Purge (V1-DATA-07)
+  // 8. Honest Logout with Complete Key Purge (V1-DATA-07, V2-MED-13)
   window.eduskillLogout = async function () {
     const oldUid = uid;
     clearTimeout(window.__eduskillSyncTimer);
@@ -606,6 +662,7 @@
 
     hydrated = false;
     isDirty = false;
+    loadedShards.clear();
     nativeRemove.call(window.localStorage, ACTIVE);
 
     // Complete purge of all eduskill_user_<oldUid>__* keys from localStorage
@@ -627,6 +684,9 @@
       });
     }
 
+    // V2-MED-13: Purge un-namespaced raw keys on logout
+    purgeRaw();
+
     if (auth) {
       try { await auth.signOut(); } catch (_) {}
     }
@@ -638,6 +698,11 @@
   if (auth) {
     auth.onAuthStateChanged(user => {
       if (user) {
+        if (uid && uid !== user.uid) {
+          purgeRaw();
+          loadedShards.clear();
+        }
+
         // V1-AUTH-02: Verified email gate
         if (!user.emailVerified) {
           try { auth.signOut(); } catch (_) {}
@@ -654,6 +719,8 @@
           nativeSet.call(window.localStorage, ACTIVE, uid);
         }
       } else {
+        purgeRaw();
+        loadedShards.clear();
         nativeRemove.call(window.localStorage, ACTIVE);
         const onLoginPage = location.pathname.toLowerCase().endsWith('loginform.html');
         if (!onLoginPage) {

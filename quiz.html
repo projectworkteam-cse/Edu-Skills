@@ -813,12 +813,10 @@
         }
 
         function getSubjects() {
-            try {
-                const data = JSON.parse(localStorage.getItem(SUBJECTS_KEY) || '[]');
-                return Array.isArray(data) ? data : [];
-            } catch (e) {
-                return [];
-            }
+            const data = (window.EduStorage && window.EduStorage.readJSON)
+                ? window.EduStorage.readJSON(SUBJECTS_KEY, [])
+                : [];
+            return Array.isArray(data) ? data : [];
         }
 
         function todayKey() {
@@ -829,12 +827,10 @@
         }
 
         function getTodayTasks() {
-            try {
-                const data = JSON.parse(localStorage.getItem(todayKey()) || '[]');
-                return Array.isArray(data) ? data : [];
-            } catch (e) {
-                return [];
-            }
+            const data = (window.EduStorage && window.EduStorage.readJSON)
+                ? window.EduStorage.readJSON(todayKey(), [])
+                : [];
+            return Array.isArray(data) ? data : [];
         }
 
         function getRelatedTasks(topicName, onlyPending = false, topicId = null) {
@@ -1222,12 +1218,9 @@ Format:
 
         function markRelatedTasksComplete(topicNames, topicId) {
             const key = todayKey();
-            let tasks;
-            try {
-                tasks = JSON.parse(localStorage.getItem(key) || '[]');
-            } catch (e) {
-                tasks = [];
-            }
+            let tasks = (window.EduStorage && window.EduStorage.readJSON)
+                ? window.EduStorage.readJSON(key, [])
+                : [];
 
             let newlyDone = 0;
             if (Array.isArray(tasks) && tasks.length) {
@@ -1282,12 +1275,10 @@ Format:
         }
 
         function getHistory() {
-            try {
-                const data = JSON.parse(localStorage.getItem(HISTORY_KEY) || '[]');
-                return Array.isArray(data) ? data : [];
-            } catch (e) {
-                return [];
-            }
+            const data = (window.EduStorage && window.EduStorage.readJSON)
+                ? window.EduStorage.readJSON(HISTORY_KEY, [])
+                : [];
+            return Array.isArray(data) ? data : [];
         }
 
         function saveHistory(record) {

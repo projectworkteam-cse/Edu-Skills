@@ -801,12 +801,13 @@
             }
         }
 
-        window.addEventListener('eduskill-cloud-ready', () => {
-            loadSavedSettings();
-        });
-        window.addEventListener('eduskill-profile-updated', () => {
-            loadSavedSettings();
-        });
+        if (typeof BroadcastChannel !== 'undefined') {
+            new BroadcastChannel('eduskill').addEventListener('message', (e) => {
+                if (!e.data || e.data.type === 'hydrated' || e.data.type === 'storage_change' || e.data.type === 'profile_updated') {
+                    loadSavedSettings();
+                }
+            });
+        }
 
         async function saveProfileSettings() {
             const name = userNameInput.value.trim();
@@ -890,21 +891,31 @@
             }
         }
 
-        // Export User Data (V1-AUTH-07)
+        // Export User Data (V1-AUTH-07, V2-MED-16)
         function exportUserData() {
             try {
                 const uid = localStorage.getItem('__eduskill_active_uid') || '';
                 const prefix = uid ? `eduskill_user_${uid}__` : '';
+                const stripNs = k => String(k || '').replace(/^eduskill_user_.*?__/, '');
 
-                const getJSON = (k) => {
-                    try {
-                        const raw = localStorage.getItem(prefix + k) || localStorage.getItem(k);
-                        return raw ? JSON.parse(raw) : null;
-                    } catch (_) { return null; }
-                };
+                const out = {};
+                for (let i = 0; i < localStorage.length; i++) {
+                    const rawK = localStorage.key(i);
+                    if (!rawK) continue;
+                    if (prefix && rawK.startsWith('eduskill_user_') && !rawK.startsWith(prefix)) continue;
+                    const key = stripNs(rawK);
+                    if (key && !key.startsWith('__') && !key.startsWith('corrupt_') && key !== 'token') {
+                        try {
+                            const val = localStorage.getItem(rawK);
+                            out[key] = val ? JSON.parse(val) : val;
+                        } catch (_) {
+                            out[key] = localStorage.getItem(rawK);
+                        }
+                    }
+                }
 
                 const exportPayload = {
-                    exportDate: new Date().toISOString(),
+                    exportedAt: new Date().toISOString(),
                     schemaVersion: parseInt(localStorage.getItem(prefix + 'schemaVersion') || '2', 10),
                     user: {
                         name: localStorage.getItem('userName') || '',
@@ -912,11 +923,14 @@
                         username: localStorage.getItem('username') || '',
                         qualification: localStorage.getItem('userRole') || ''
                     },
-                    subjects: getJSON('subjects') || [],
-                    exams: getJSON('exams') || [],
-                    notes: getJSON('notes') || [],
-                    timetable: getJSON('timetable') || null,
-                    quizHistory: getJSON('quizHistory') || getJSON('quiz_history') || []
+                    data: out,
+                    subjects: out.subjects || [],
+                    exams: out.exams || [],
+                    notes: out.savedNotes || out.notes || [],
+                    savedNotes: out.savedNotes || [],
+                    tasks: Object.entries(out).filter(([k]) => k.startsWith('tasks_')).reduce((acc, [k, v]) => ({ ...acc, [k]: v }), {}),
+                    timetable: out.timetable || null,
+                    quizHistory: out.quizHistory || []
                 };
 
                 const blob = new Blob([JSON.stringify(exportPayload, null, 2)], { type: 'application/json' });
@@ -936,7 +950,7 @@
             }
         }
 
-        // Delete Account (V1-AUTH-07)
+        // Delete Account (V1-AUTH-07, V2-HIGH-09)
         async function deleteUserAccount() {
             const auth = window.firebase && window.firebase.auth ? window.firebase.auth() : null;
             const db = window.firebase && window.firebase.firestore ? window.firebase.firestore() : null;
@@ -965,32 +979,40 @@
                 return;
             }
 
-            const uid = user.uid;
             try {
-                if (db) {
-                    if (expectedUsername) {
-                        await db.collection('usernames').doc(expectedUsername).delete().catch(() => {});
-                    }
-                    const knownShards = ['core', 'quiz', 'timetable', 'notes', 'state'];
-                    for (const s of knownShards) {
-                        await db.collection('users').doc(uid).collection('app').doc(s).delete().catch(() => {});
-                    }
-                    await db.collection('users').doc(uid).delete().catch(() => {});
+                // 1) Reauthenticate if Google provider before deleting
+                const isGoogle = (user.providerData || []).some(p => p.providerId === 'google.com');
+                if (isGoogle && typeof user.reauthenticateWithPopup === 'function' && window.firebase?.auth?.GoogleAuthProvider) {
+                    await user.reauthenticateWithPopup(new firebase.auth.GoogleAuthProvider());
                 }
 
+                // 2) Batch delete all app shards (including tasks_YYYY_MM), username doc, and user doc
+                if (db) {
+                    const col = db.collection('users').doc(user.uid).collection('app');
+                    const snap = await col.get();
+                    const batch = db.batch();
+                    snap.forEach(d => batch.delete(d.ref));
+                    batch.delete(col.doc('state'));
+                    if (expectedUsername) {
+                        batch.delete(db.collection('usernames').doc(expectedUsername));
+                    }
+                    batch.delete(db.collection('users').doc(user.uid));
+                    await batch.commit(); // Throws -> nothing else happens
+                }
+
+                // 3) Delete auth user last
+                await user.delete();
+
+                // 4) Purge local data only after cloud deletion succeeded
                 if (typeof window.eduskillResetWorkspace === 'function') {
                     await window.eduskillResetWorkspace();
                 } else {
                     localStorage.clear();
                 }
 
-                await user.delete();
-
                 if (window.EduUI && typeof EduUI.toast === 'function') {
                     EduUI.toast('Your account and all associated data have been permanently deleted.', 'info');
                     await new Promise(r => setTimeout(r, 1200));
-                } else {
-                    alert('Your account and all associated data have been permanently deleted.');
                 }
                 (window.top || window).location.href = 'loginform.html';
             } catch (err) {

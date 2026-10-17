@@ -1430,8 +1430,12 @@
             const container = document.getElementById('reminderPopupList');
             if (!container) return;
 
-            const reminders = JSON.parse(localStorage.getItem('reminders') || '[]');
-            const exams = JSON.parse(localStorage.getItem('exams') || '[]');
+            const reminders = (window.EduStorage && window.EduStorage.readJSON)
+                ? window.EduStorage.readJSON('reminders', [])
+                : [];
+            const exams = (window.EduStorage && window.EduStorage.readJSON)
+                ? window.EduStorage.readJSON('exams', [])
+                : [];
 
             // Today's tasks (pending + count)
             const todayTasks = loadTasks();
@@ -1525,9 +1529,15 @@
             }
             if (errorEl) errorEl.style.display = 'none';
 
-            const reminders = JSON.parse(localStorage.getItem('reminders') || '[]');
+            const reminders = (window.EduStorage && window.EduStorage.readJSON)
+                ? window.EduStorage.readJSON('reminders', [])
+                : [];
             reminders.push({ id: Date.now(), title, datetime: date + 'T' + time, message: message || title, fired: false });
-            localStorage.setItem('reminders', JSON.stringify(reminders));
+            if (window.EduStorage && window.EduStorage.writeJSON) {
+                window.EduStorage.writeJSON('reminders', reminders);
+            } else {
+                localStorage.setItem('reminders', JSON.stringify(reminders));
+            }
 
             ['popupReminderTitle', 'popupReminderDate', 'popupReminderTime', 'popupReminderMessage'].forEach(id => {
                 const el = document.getElementById(id);
@@ -1539,8 +1549,15 @@
         }
 
         function deleteReminder(id) {
-            const reminders = JSON.parse(localStorage.getItem('reminders') || '[]').filter(r => r.id !== id);
-            localStorage.setItem('reminders', JSON.stringify(reminders));
+            const rawRem = (window.EduStorage && window.EduStorage.readJSON)
+                ? window.EduStorage.readJSON('reminders', [])
+                : [];
+            const reminders = rawRem.filter(r => r.id !== id);
+            if (window.EduStorage && window.EduStorage.writeJSON) {
+                window.EduStorage.writeJSON('reminders', reminders);
+            } else {
+                localStorage.setItem('reminders', JSON.stringify(reminders));
+            }
             renderReminderPanel();
         }
 
@@ -1551,10 +1568,9 @@
         }
 
         function loadTasks() {
-            if (window.EduStorage && window.EduStorage.readJSON) {
-                return window.EduStorage.readJSON(todayKey(), []);
-            }
-            return JSON.parse(localStorage.getItem(todayKey()) || '[]');
+            return (window.EduStorage && window.EduStorage.readJSON)
+                ? window.EduStorage.readJSON(todayKey(), [])
+                : [];
         }
 
         function saveTasks(tasks) {
@@ -1587,18 +1603,19 @@
         // quiz scores and topic completion.
         function getWeakTopics() {
             try {
-                const stored = (window.EduStorage && window.EduStorage.readJSON)
+                const rawWeak = (window.EduStorage && window.EduStorage.readJSON)
                     ? window.EduStorage.readJSON('weakTopics', [])
-                    : JSON.parse(localStorage.getItem('weakTopics') || '[]');
-                if (Array.isArray(stored) && stored.length) return stored.slice(0, 8);
+                    : [];
+                const stored = Array.isArray(rawWeak) ? rawWeak : (rawWeak && Array.isArray(rawWeak.result) ? rawWeak.result : []);
+                if (stored.length) return stored.slice(0, 8);
             } catch (e) {}
 
             const subjects = (window.EduStorage && window.EduStorage.readJSON)
                 ? window.EduStorage.readJSON('subjects', [])
-                : JSON.parse(localStorage.getItem('subjects') || '[]');
+                : [];
             const history = (window.EduStorage && window.EduStorage.readJSON)
                 ? window.EduStorage.readJSON('quizHistory', [])
-                : JSON.parse(localStorage.getItem('quizHistory') || '[]');
+                : [];
             const quiz = {};
             history.forEach(r => {
                 const topics = (Array.isArray(r.topics) && r.topics.length) ? r.topics : ['General'];
@@ -1634,7 +1651,7 @@
 
             const savedSubjects = (window.EduStorage && window.EduStorage.readJSON)
                 ? window.EduStorage.readJSON('subjects', [])
-                : JSON.parse(localStorage.getItem('subjects') || '[]');
+                : [];
 
             if (!savedSubjects.length) {
                 showTaskNotification('Please add at least one Subject with topics first in the "Subjects & Exams" tab!');
@@ -1652,7 +1669,7 @@
             // Upcoming exams (priority signal)
             const exams = (window.EduStorage && window.EduStorage.readJSON)
                 ? window.EduStorage.readJSON('exams', [])
-                : JSON.parse(localStorage.getItem('exams') || '[]');
+                : [];
             const examContext = exams
                 .map(e => {
                     const daysLeft = (window.EduDates && window.EduDates.daysUntil)
@@ -1666,10 +1683,9 @@
                 .join('\n') || 'No upcoming exams.';
 
             // Saved timetable (generated on the Time Table page), if any
-            let timetable = null;
-            try {
-                timetable = JSON.parse(localStorage.getItem('cached_timetable') || localStorage.getItem('timetable') || 'null');
-            } catch (_) {}
+            let timetable = (window.EduStorage && window.EduStorage.readJSON)
+                ? (window.EduStorage.readJSON('cached_timetable', null) || window.EduStorage.readJSON('timetable', null))
+                : null;
             const timetableContext = timetable
                 ? JSON.stringify(timetable)
                 : 'No timetable generated yet.';
@@ -1788,7 +1804,7 @@ INSTRUCTIONS:
             // V1-FUNC-01: Match topic by stable ID first, with exact-name fallback for legacy unlinked tasks
             const subjects = (window.EduStorage && window.EduStorage.readJSON)
                 ? window.EduStorage.readJSON('subjects', [])
-                : JSON.parse(localStorage.getItem('subjects') || '[]');
+                : [];
             let updatedSubjects = false;
 
             const tRefTid = t.ref && (t.ref.tid || t.ref.topicId);
@@ -1896,7 +1912,7 @@ INSTRUCTIONS:
         function renderUpcomingExams() {
             const exams = (window.EduStorage && window.EduStorage.readJSON)
                 ? window.EduStorage.readJSON('exams', [])
-                : JSON.parse(localStorage.getItem('exams') || '[]');
+                : [];
             const container = document.getElementById('upcomingExamsList');
 
             const upcoming = exams
@@ -1948,7 +1964,7 @@ INSTRUCTIONS:
 
             const exams = (window.EduStorage && window.EduStorage.readJSON)
                 ? window.EduStorage.readJSON('exams', [])
-                : JSON.parse(localStorage.getItem('exams') || '[]');
+                : [];
             const urgent = exams.filter(e => {
                 if (!e || !e.date) return false;
                 const daysLeft = (window.EduDates && window.EduDates.daysUntil)
@@ -2040,7 +2056,7 @@ INSTRUCTIONS:
             if (localStorage.getItem('pref_exam_alerts') === 'false') return;
             const exams = (window.EduStorage && window.EduStorage.readJSON)
                 ? window.EduStorage.readJSON('exams', [])
-                : JSON.parse(localStorage.getItem('exams') || '[]');
+                : [];
 
             exams.forEach(e => {
                 const daysLeft = (window.EduDates && window.EduDates.daysUntil)
@@ -2065,7 +2081,9 @@ INSTRUCTIONS:
         // 2) Custom reminders created in Settings (date + time + message).
         //    After firing (popping up) they are removed automatically.
         function checkCustomReminders() {
-            const reminders = JSON.parse(localStorage.getItem('reminders') || '[]');
+            const reminders = (window.EduStorage && window.EduStorage.readJSON)
+                ? window.EduStorage.readJSON('reminders', [])
+                : [];
             const now = Date.now();
 
             const remaining = reminders.filter(r => {
@@ -2101,7 +2119,33 @@ INSTRUCTIONS:
             checkDailyStudyReminder();
         }
 
-        // INIT
+        // INIT & SHELL REFRESH AFTER HYDRATION (V2-CRIT-04)
+        const refreshShell = (() => {
+            let t;
+            return () => {
+                clearTimeout(t);
+                t = setTimeout(() => {
+                    if (typeof renderTasks === 'function') renderTasks();
+                    if (typeof renderUpcomingExams === 'function') renderUpcomingExams();
+                    if (typeof updateNotificationBadge === 'function') updateNotificationBadge();
+                    if (typeof checkReminders === 'function') checkReminders();
+                    if (typeof loadChatHistory === 'function') loadChatHistory();
+                    if (typeof renderHeaderName === 'function') renderHeaderName();
+                }, 80);
+            };
+        })();
+
+        window.addEventListener('eduskill:hydrated', refreshShell);
+        window.addEventListener('eduskill-cloud-ready', refreshShell);
+        window.addEventListener('storage', refreshShell);
+        if (typeof BroadcastChannel !== 'undefined') {
+            new BroadcastChannel('eduskill').addEventListener('message', (e) => {
+                if (!e.data || e.data.type === 'hydrated' || e.data.type === 'storage_change' || e.data.type === 'storage_remove' || e.data.type === 'profile_updated') {
+                    refreshShell();
+                }
+            });
+        }
+
         renderTasks();
         renderUpcomingExams();
         setInterval(renderUpcomingExams, 30000);
@@ -2245,10 +2289,8 @@ INSTRUCTIONS:
             const rawName = (localStorage.getItem('userName') || localStorage.getItem('username') || 'Student').trim();
             const firstName = (rawName.split(/\s+/)[0] || 'Student').replace(/[<>[\]]/g, '').slice(0, 30);
             const userRole = (localStorage.getItem('userRole') || '').trim().replace(/[<>[\]]/g, '').slice(0, 50);
-            let subjects = [];
-            let exams = [];
-            try { subjects = (window.EduStorage && window.EduStorage.readJSON) ? window.EduStorage.readJSON('subjects', []) : JSON.parse(localStorage.getItem('subjects') || '[]'); } catch (e) {}
-            try { exams = (window.EduStorage && window.EduStorage.readJSON) ? window.EduStorage.readJSON('exams', []) : JSON.parse(localStorage.getItem('exams') || '[]'); } catch (e) {}
+            let subjects = (window.EduStorage && window.EduStorage.readJSON) ? window.EduStorage.readJSON('subjects', []) : [];
+            let exams = (window.EduStorage && window.EduStorage.readJSON) ? window.EduStorage.readJSON('exams', []) : [];
             if (!Array.isArray(subjects)) subjects = [];
             if (!Array.isArray(exams)) exams = [];
 

@@ -440,12 +440,7 @@
         }
 
         function getJSON(key, fallback) {
-            try {
-                const v = JSON.parse(localStorage.getItem(key) || 'null');
-                return v === null || v === undefined ? fallback : v;
-            } catch (e) {
-                return fallback;
-            }
+            return window.EduStorage ? window.EduStorage.readJSON(key, fallback) : fallback;
         }
 
         function todayKey() {
@@ -965,7 +960,13 @@ Return ONLY valid JSON (no markdown) in this exact shape:
 
         window.addEventListener('DOMContentLoaded', renderFromStorage);
         window.addEventListener('storage', renderFromStorage);
-        window.addEventListener('eduskill-cloud-ready', renderFromStorage);
+        if (typeof BroadcastChannel !== 'undefined') {
+            new BroadcastChannel('eduskill').addEventListener('message', (e) => {
+                if (!e.data || e.data.type === 'hydrated' || e.data.type === 'storage_change') {
+                    renderFromStorage();
+                }
+            });
+        }
     </script>
     <script>
         document.addEventListener('click', () => {

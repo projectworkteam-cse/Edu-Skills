@@ -857,11 +857,13 @@
         // window.eduskillGroqFetch is loaded globally from env.js
 
         // Builds a map of "subject||topic" (lowercase) -> weakness score (0-100).
-        // Prefers the AI Insights results, otherwise computes locally.
         function buildWeaknessMap() {
             try {
-                const stored = JSON.parse(localStorage.getItem('weakTopics') || '[]');
-                if (Array.isArray(stored) && stored.length) {
+                const rawWeak = (window.EduStorage && window.EduStorage.readJSON)
+                    ? window.EduStorage.readJSON('weakTopics', [])
+                    : [];
+                const stored = Array.isArray(rawWeak) ? rawWeak : (rawWeak && Array.isArray(rawWeak.result) ? rawWeak.result : []);
+                if (stored.length) {
                     const map = {};
                     stored.forEach(w => {
                         map[String(w.subject || '').toLowerCase() + '||' + String(w.topic || '').toLowerCase()] = Number(w.score) || 0;
@@ -870,8 +872,12 @@
                 }
             } catch (e) {}
 
-            const subjects = JSON.parse(localStorage.getItem('subjects') || '[]');
-            const history = JSON.parse(localStorage.getItem('quizHistory') || '[]');
+            const subjects = (window.EduStorage && window.EduStorage.readJSON)
+                ? window.EduStorage.readJSON('subjects', [])
+                : [];
+            const history = (window.EduStorage && window.EduStorage.readJSON)
+                ? window.EduStorage.readJSON('quizHistory', [])
+                : [];
             const quiz = {};
             history.forEach(r => {
                 const topics = (Array.isArray(r.topics) && r.topics.length) ? r.topics : ['General'];
@@ -945,9 +951,6 @@
             });
             setInterval(checkDataChange, 60000);
 
-            window.addEventListener('eduskill-cloud-ready', () => {
-                initBuild();
-            }, { once: true });
             setTimeout(() => {
                 if (!buildInitialized) initBuild();
             }, 500);
@@ -961,6 +964,11 @@
             });
             if (typeof BroadcastChannel !== 'undefined') {
                 new BroadcastChannel('eduskill').addEventListener('message', (e) => {
+                    if (e.data && e.data.type === 'hydrated') {
+                        if (!buildInitialized) initBuild();
+                        else buildTimetable();
+                        return;
+                    }
                     const k = bareKey(e.data?.key);
                     if (k === 'subjects' || k === 'exams' || k === 'timetable_preferences') {
                         buildTimetable();
@@ -976,7 +984,9 @@
 
         function loadSettings() {
             try {
-                const saved = JSON.parse(localStorage.getItem('timetable_preferences'));
+                const saved = (window.EduStorage && window.EduStorage.readJSON)
+                    ? window.EduStorage.readJSON('timetable_preferences', null)
+                    : null;
                 if (saved) {
                     if (saved.shift) document.getElementById('studyShift').value = saved.shift;
                     if (saved.morningStart) document.getElementById('morningStart').value = saved.morningStart;
@@ -1029,9 +1039,15 @@
         }
 
         function getScheduleInputSignature() {
-            const subjects = (window.EduStorage ? window.EduStorage.readJSON('subjects', []) : JSON.parse(localStorage.getItem('subjects') || '[]'));
-            const exams = (window.EduStorage ? window.EduStorage.readJSON('exams', []) : JSON.parse(localStorage.getItem('exams') || '[]'));
-            const prefs = (window.EduStorage ? window.EduStorage.readJSON('timetable_preferences', {}) : JSON.parse(localStorage.getItem('timetable_preferences') || '{}'));
+            const subjects = (window.EduStorage && window.EduStorage.readJSON)
+                ? window.EduStorage.readJSON('subjects', [])
+                : [];
+            const exams = (window.EduStorage && window.EduStorage.readJSON)
+                ? window.EduStorage.readJSON('exams', [])
+                : [];
+            const prefs = (window.EduStorage && window.EduStorage.readJSON)
+                ? window.EduStorage.readJSON('timetable_preferences', {})
+                : {};
             const localDate = (window.EduDates && typeof window.EduDates.dateKey === 'function')
                 ? window.EduDates.dateKey()
                 : (function () {
@@ -1050,7 +1066,9 @@
         }
 
         function buildTimetable() {
-            const subjects = JSON.parse(localStorage.getItem('subjects') || '[]');
+            const subjects = (window.EduStorage && window.EduStorage.readJSON)
+                ? window.EduStorage.readJSON('subjects', [])
+                : [];
             if (!subjects || subjects.length === 0) {
                 renderNoSubjects();
                 return;
@@ -1083,8 +1101,12 @@
         }
 
         function generateTimetable() {
-            const subjects = JSON.parse(localStorage.getItem('subjects') || '[]');
-            const exams = JSON.parse(localStorage.getItem('exams') || '[]');
+            const subjects = (window.EduStorage && window.EduStorage.readJSON)
+                ? window.EduStorage.readJSON('subjects', [])
+                : [];
+            const exams = (window.EduStorage && window.EduStorage.readJSON)
+                ? window.EduStorage.readJSON('exams', [])
+                : [];
             if (!subjects || subjects.length === 0) {
                 localStorage.removeItem('cached_timetable');
                 localStorage.removeItem('timetable');
@@ -1190,7 +1212,9 @@
         // Re-plans the week: weak topics get extra sessions, completed topics are
         // dropped, and exam-urgent subjects move up. Adds an AI explanation.
         async function smartReschedule() {
-            const subjects = JSON.parse(localStorage.getItem('subjects') || '[]');
+            const subjects = (window.EduStorage && window.EduStorage.readJSON)
+                ? window.EduStorage.readJSON('subjects', [])
+                : [];
             const msg = document.getElementById('statusMsg');
             const btn = document.getElementById('smartRescheduleBtn');
             const note = document.getElementById('smartRescheduleNote');
@@ -1223,7 +1247,7 @@
                 return `${parts[1]} (${parts[0]})`;
             }).join(', ') || 'none detected';
 
-            const examCount = JSON.parse(localStorage.getItem('exams') || '[]')
+            const examCount = ((window.EduStorage && window.EduStorage.readJSON) ? window.EduStorage.readJSON('exams', []) : [])
                 .filter(e => {
                     const d = new Date(String(e.date || '') + 'T00:00:00');
                     const today = new Date(); today.setHours(0, 0, 0, 0);
@@ -1420,7 +1444,9 @@
         }
 
         function getTopicForSubject(subjectName, dayIdx, slotIdx) {
-            const subjects = JSON.parse(localStorage.getItem('subjects') || '[]');
+            const subjects = (window.EduStorage && window.EduStorage.readJSON)
+                ? window.EduStorage.readJSON('subjects', [])
+                : [];
             const found = subjects.find(s => {
                 const n = typeof s === 'object' ? s.name : s;
                 return (n || '').toLowerCase() === subjectName.toLowerCase();
@@ -1436,7 +1462,9 @@
         }
 
         function getDifficulty(subjectName) {
-            const subjects = JSON.parse(localStorage.getItem('subjects') || '[]');
+            const subjects = (window.EduStorage && window.EduStorage.readJSON)
+                ? window.EduStorage.readJSON('subjects', [])
+                : [];
             const found = subjects.find(s => {
                 const n = typeof s === 'object' ? s.name : s;
                 return (n || '').toLowerCase() === subjectName.toLowerCase();

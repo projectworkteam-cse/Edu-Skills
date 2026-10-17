@@ -545,10 +545,9 @@
         let generatedTopics = [];
 
         function getSubjects() {
-            if (window.EduStorage && typeof window.EduStorage.readJSON === 'function') {
-                return window.EduStorage.readJSON('subjects', []);
-            }
-            return JSON.parse(localStorage.getItem('subjects') || '[]');
+            return (window.EduStorage && typeof window.EduStorage.readJSON === 'function')
+                ? window.EduStorage.readJSON('subjects', [])
+                : [];
         }
 
         function saveSubjects(list) {
@@ -560,10 +559,9 @@
         }
 
         function getExams() {
-            if (window.EduStorage && typeof window.EduStorage.readJSON === 'function') {
-                return window.EduStorage.readJSON('exams', []);
-            }
-            return JSON.parse(localStorage.getItem('exams') || '[]');
+            return (window.EduStorage && typeof window.EduStorage.readJSON === 'function')
+                ? window.EduStorage.readJSON('exams', [])
+                : [];
         }
 
         function saveExams(list) {
@@ -1008,7 +1006,9 @@ Only JSON.`;
             const currentExams = getExams();
             const matchingExams = currentExams.filter(e => String(e.sid || '') === String(id) || e.subject === subject.name);
 
-            const quizHistory = (window.EduStorage ? window.EduStorage.readJSON('quizHistory', []) : JSON.parse(localStorage.getItem('quizHistory') || '[]'));
+            const quizHistory = (window.EduStorage && window.EduStorage.readJSON)
+                ? window.EduStorage.readJSON('quizHistory', [])
+                : [];
             const matchingQuiz = Array.isArray(quizHistory) ? quizHistory.filter(q => String(q.sid || '') === String(id) || q.subject === subject.name) : [];
 
             let matchingTasksCount = 0;
@@ -1018,12 +1018,12 @@ Only JSON.`;
                 if (k && (k.startsWith('tasks_') || k.includes('__tasks_'))) taskKeys.push(k);
             }
             taskKeys.forEach(k => {
-                try {
-                    const arr = JSON.parse(localStorage.getItem(k) || '[]');
-                    if (Array.isArray(arr)) {
-                        matchingTasksCount += arr.filter(t => t && t.ref && String(t.ref.sid) === String(id)).length;
-                    }
-                } catch (_) {}
+                const arr = (window.EduStorage && window.EduStorage.readJSON)
+                    ? window.EduStorage.readJSON(k, [])
+                    : [];
+                if (Array.isArray(arr)) {
+                    matchingTasksCount += arr.filter(t => t && t.ref && String(t.ref.sid) === String(id)).length;
+                }
             });
 
             const msg = `Are you sure you want to delete "${subject.name}"?\nThis will remove ${matchingExams.length} exam(s), ${matchingTasksCount} linked task(s), and ${matchingQuiz.length} quiz record(s).`;
@@ -1053,15 +1053,19 @@ Only JSON.`;
             }
 
             taskKeys.forEach(k => {
-                try {
-                    const arr = JSON.parse(localStorage.getItem(k) || '[]');
-                    if (Array.isArray(arr)) {
-                        const cleaned = arr.filter(t => !t || !t.ref || String(t.ref.sid) !== String(id));
-                        if (cleaned.length !== arr.length) {
+                const arr = (window.EduStorage && window.EduStorage.readJSON)
+                    ? window.EduStorage.readJSON(k, [])
+                    : [];
+                if (Array.isArray(arr)) {
+                    const cleaned = arr.filter(t => !t || !t.ref || String(t.ref.sid) !== String(id));
+                    if (cleaned.length !== arr.length) {
+                        if (window.EduStorage && window.EduStorage.writeJSON) {
+                            window.EduStorage.writeJSON(k, cleaned);
+                        } else {
                             localStorage.setItem(k, JSON.stringify(cleaned));
                         }
                     }
-                } catch (_) {}
+                }
             });
 
             updateSubjectSelect();

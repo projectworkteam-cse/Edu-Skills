@@ -453,12 +453,7 @@
         }
 
         function getJSON(key, fallback) {
-            try {
-                const v = JSON.parse(localStorage.getItem(key) || 'null');
-                return v === null || v === undefined ? fallback : v;
-            } catch (e) {
-                return fallback;
-            }
+            return window.EduStorage ? window.EduStorage.readJSON(key, fallback) : fallback;
         }
 
         function setStatus(text, kind) {
@@ -777,10 +772,14 @@ Match the structure, depth and wording to the "${style}" style. Do not add any t
             initSubjectSelect();
             renderSavedNotes();
         });
-        window.addEventListener('eduskill-cloud-ready', () => {
-            initSubjectSelect();
-            renderSavedNotes();
-        });
+        if (typeof BroadcastChannel !== 'undefined') {
+            new BroadcastChannel('eduskill').addEventListener('message', (e) => {
+                if (!e.data || e.data.type === 'hydrated' || e.data.type === 'storage_change') {
+                    initSubjectSelect();
+                    renderSavedNotes();
+                }
+            });
+        }
     </script>
     <script>
         document.addEventListener('click', () => {
