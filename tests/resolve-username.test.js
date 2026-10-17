@@ -1,15 +1,13 @@
-// tests/resolve-username.test.js - verifies server-side username resolution (V1-SEC-05)
+// tests/resolve-username.test.js - verifies secure server-side username resolution (V1-SEC-05, V2-HIGH-07)
 const test = require('node:test');
 const assert = require('node:assert');
 
-process.env.FIREBASE_API_KEY = 'mock-api-key';
-process.env.FIREBASE_PROJECT_ID = 'test-proj';
-
-const realFetch = global.fetch;
-function mockFetch(fn) { global.fetch = fn; }
-test.afterEach(() => { global.fetch = realFetch; });
-
+let ipCounter = 1;
 function call(handler, { method = 'POST', headers = {}, body = {}, socket = { remoteAddress: '127.0.0.1' } } = {}) {
+  const reqHeaders = { ...headers };
+  if (!reqHeaders['x-forwarded-for']) {
+    reqHeaders['x-forwarded-for'] = `192.168.1.${ipCounter++}`;
+  }
   return new Promise((resolve) => {
     const res = {
       code: 200,
@@ -18,11 +16,16 @@ function call(handler, { method = 'POST', headers = {}, body = {}, socket = { re
       status(c) { this.code = c; return this; },
       json(o) { resolve({ code: this.code, body: o, headers: this.headers }); }
     };
-    handler({ method, headers, body, socket }, res);
+    handler({ method, headers: reqHeaders, body, socket }, res);
   });
 }
 
 const handler = require('../api/auth/resolve-username.js');
+
+test.beforeEach(() => {
+  delete process.env.FIREBASE_SERVICE_ACCOUNT;
+  handler._setDbForTesting(null);
+});
 
 test('resolve-username: rejects non-POST with 405', async () => {
   const r = await call(handler, { method: 'GET' });
@@ -33,51 +36,82 @@ test('resolve-username: rejects non-POST with 405', async () => {
 test('resolve-username: rejects invalid username formats with 400', async () => {
   const invalid = ['', 'ab', 'user@name', 'too_long_username_exceeding_twenty_chars', 'spaces in name', 'bad!punct'];
   for (const u of invalid) {
-    const r = await call(handler, { body: { username: u } });
-    assert.strictEqual(r.code, 400, `Expected 400 for "${u}"`);
-    assert.strictEqual(r.body.error, 'bad_username');
+    const r1 = await call(handler, { body: { username: u } });
+    assert.strictEqual(r1.code, 400, `Expected 400 for username "${u}"`);
+    assert.strictEqual(r1.body.error, 'bad_username');
+
+    const r2 = await call(handler, { body: { check: u } });
+    assert.strictEqual(r2.code, 400, `Expected 400 for check "${u}"`);
+    assert.strictEqual(r2.body.available, false);
   }
 });
 
-test('resolve-username: returns email when username exists', async () => {
-  mockFetch(async (url) => {
-    assert.ok(String(url).includes('/documents/usernames/alexsmith'));
-    assert.ok(String(url).includes('key=mock-api-key'));
-    return {
-      ok: true,
-      status: 200,
-      json: async () => ({
-        fields: {
-          email: { stringValue: 'alex@example.com' },
-          uid: { stringValue: 'uid_alex123' }
-        }
-      })
-    };
+test('resolve-username: returns 503 when service account is not configured', async () => {
+  const r = await call(handler, { body: { username: 'testuser' } });
+  assert.strictEqual(r.code, 503);
+  assert.strictEqual(r.body.error, 'not_configured');
+});
+
+test('resolve-username: returns 500 when service account credentials are malformed', async () => {
+  process.env.FIREBASE_SERVICE_ACCOUNT = 'not-valid-json';
+  const r = await call(handler, { body: { username: 'testuser' } });
+  assert.strictEqual(r.code, 500);
+  assert.strictEqual(r.body.error, 'service_account_error');
+});
+
+test('resolve-username: returns email when username exists in Firestore', async () => {
+  handler._setDbForTesting({
+    doc: (p) => {
+      assert.strictEqual(p, 'usernames/alexsmith');
+      return {
+        get: async () => ({
+          exists: true,
+          data: () => ({ email: 'alex@example.com', uid: 'uid_alex123' })
+        })
+      };
+    }
   });
 
-  const r = await call(handler, { body: { username: 'alexsmith' } });
+  const r = await call(handler, { body: { username: 'AlexSmith' } });
   assert.strictEqual(r.code, 200);
   assert.strictEqual(r.body.email, 'alex@example.com');
 });
 
-test('resolve-username: returns email: null when username does not exist (404)', async () => {
-  mockFetch(async () => ({
-    ok: false,
-    status: 404,
-    json: async () => ({ error: { message: 'Document not found' } })
-  }));
+test('resolve-username: returns email: null when username does not exist', async () => {
+  handler._setDbForTesting({
+    doc: (p) => {
+      assert.strictEqual(p, 'usernames/unknown_user_99');
+      return {
+        get: async () => ({ exists: false, data: () => null })
+      };
+    }
+  });
 
   const r = await call(handler, { body: { username: 'unknown_user_99' } });
   assert.strictEqual(r.code, 200);
   assert.strictEqual(r.body.email, null);
 });
 
+test('resolve-username: supports check availability action', async () => {
+  handler._setDbForTesting({
+    doc: (p) => ({
+      get: async () => ({ exists: p.includes('taken') })
+    })
+  });
+
+  const r1 = await call(handler, { body: { check: 'free_username' } });
+  assert.strictEqual(r1.code, 200);
+  assert.strictEqual(r1.body.available, true);
+
+  const r2 = await call(handler, { body: { check: 'taken_user' } });
+  assert.strictEqual(r2.code, 200);
+  assert.strictEqual(r2.body.available, false);
+});
+
 test('resolve-username: enforces rate limit after 10 requests per minute', async () => {
-  mockFetch(async () => ({
-    ok: true,
-    status: 200,
-    json: async () => ({ fields: { email: { stringValue: 'rate@test.com' } } })
-  }));
+  handler._setDbForTesting({
+    doc: () => ({ get: async () => ({ exists: true, data: () => ({ email: 'rate@test.com' }) }) })
+  });
 
   const testIp = '10.0.0.99';
   let last;

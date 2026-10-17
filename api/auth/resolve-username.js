@@ -1,10 +1,33 @@
-// api/auth/resolve-username.js - server-side username to email lookup (V1-SEC-05).
-// ponytail: uses Firestore REST API via Google Cloud without heavy dependencies.
+// api/auth/resolve-username.js - secure server-side username to email lookup (V1-SEC-05, V2-HIGH-07)
+const admin = require('firebase-admin');
+const { getFirestore } = require('firebase-admin/firestore');
 const { rateLimit } = require('../../lib/rate-limit');
 
-const PROJECT_ID = process.env.FIREBASE_PROJECT_ID || 'eduskillai-3e807';
+let mockDb = null; // ponytail: testing hook for unit tests without live GCP network calls
 
-module.exports = async function handler(req, res) {
+function getFirestoreDb() {
+  if (mockDb) return mockDb;
+  const apps = admin.getApps ? admin.getApps() : (admin.apps || []);
+  if (apps.length) return getFirestore();
+
+  const saEnv = process.env.FIREBASE_SERVICE_ACCOUNT;
+  if (!saEnv) {
+    return null;
+  }
+
+  try {
+    const creds = typeof saEnv === 'string' ? JSON.parse(saEnv) : saEnv;
+    admin.initializeApp({
+      credential: admin.cert(creds)
+    });
+    return getFirestore();
+  } catch (err) {
+    console.error('[resolve-username] Failed to initialize firebase-admin:', err.message);
+    throw err;
+  }
+}
+
+async function handler(req, res) {
   res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
   if (req.method !== 'POST') {
     res.setHeader('Allow', 'POST');
@@ -20,39 +43,60 @@ module.exports = async function handler(req, res) {
   }
 
   let body;
-  try { body = typeof req.body === 'string' ? JSON.parse(req.body) : req.body; } catch { body = null; }
-  const username = String(body?.username || '').trim().toLowerCase();
-
-  if (!/^[a-z0-9_]{3,20}$/.test(username)) {
-    return res.status(400).json({ error: 'bad_username', message: 'Invalid username format.' });
+  try {
+    body = typeof req.body === 'string' ? JSON.parse(req.body) : (req.body || {});
+  } catch {
+    body = {};
   }
 
-  const apiKey = process.env.FIREBASE_API_KEY;
-  if (!apiKey) {
-    return res.status(503).json({ error: 'not_configured', message: 'Server lookup is currently unconfigured.' });
+  // Support both username login resolution and sign-up availability checks (V2-HIGH-07)
+  const isCheck = 'check' in body;
+  const rawName = isCheck ? body.check : body.username;
+  const username = String(rawName || '').trim().toLowerCase();
+
+  if (!/^[a-z0-9_.]{3,20}$/.test(username)) {
+    return res.status(400).json({
+      error: 'bad_username',
+      message: 'Invalid username format.',
+      ...(isCheck ? { available: false } : { email: null })
+    });
+  }
+
+  let db;
+  try {
+    db = getFirestoreDb();
+  } catch (initErr) {
+    return res.status(500).json({
+      error: 'service_account_error',
+      message: 'Server credential error. Please sign in with email.'
+    });
+  }
+
+  if (!db) {
+    return res.status(503).json({
+      error: 'not_configured',
+      message: 'Username lookup is unconfigured. Please sign in with email.'
+    });
   }
 
   try {
-    const url = `https://firestore.googleapis.com/v1/projects/${PROJECT_ID}/databases/(default)/documents/usernames/${username}?key=${apiKey}`;
-    const response = await fetch(url, { signal: AbortSignal.timeout(5000) });
-
-    if (response.status === 404) {
-      return res.status(200).json({ email: null });
+    const snap = await db.doc('usernames/' + username).get();
+    if (isCheck) {
+      return res.status(200).json({ available: !snap.exists });
     }
-
-    if (!response.ok) {
-      console.warn('[resolve-username] Firestore REST returned HTTP', response.status);
-      return res.status(502).json({ error: 'lookup_failed', message: 'Username lookup failed.' });
-    }
-
-    const data = await response.json();
-    const email = data.fields?.email?.stringValue || null;
+    const email = snap.exists ? (snap.data()?.email || null) : null;
     return res.status(200).json({ email });
   } catch (err) {
-    const isTimeout = err.name === 'TimeoutError' || err.name === 'AbortError';
-    return res.status(isTimeout ? 504 : 502).json({
-      error: isTimeout ? 'timeout' : 'lookup_failed',
-      message: 'Username resolution unavailable.'
+    console.error('[resolve-username] Firestore lookup failed:', err.message);
+    return res.status(500).json({
+      error: 'lookup_failed',
+      message: 'Username lookup failed. Please try again or use your email.'
     });
   }
+}
+
+handler._setDbForTesting = function(db) {
+  mockDb = db;
 };
+
+module.exports = handler;

@@ -31,8 +31,7 @@ service cloud.firestore {
 
     // ── Username -> account map ────────────────────────────────────────
     match /usernames/{name} {
-      allow get:  if true;       // STAGE 1. After V1-SEC-05 is deployed (server lookup) change to: if false
-      allow list: if false;
+      allow get, list: if false;      // closed to prevent email enumeration (V1-SEC-05, V2-HIGH-07)
       allow create: if signedIn()
                     && name.matches('^[a-z0-9_]{3,20}$')
                     && request.resource.data.keys().hasOnly(['uid','email','createdAt'])

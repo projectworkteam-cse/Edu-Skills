@@ -360,10 +360,22 @@
 
     lucide.createIcons();
 
-    // Active session check (AUTH-08): if already signed in and verified, jump straight to workspace
-    auth.onAuthStateChanged(function (user) {
+    // Active session check (AUTH-08, V2-HIGH-08): single postLogin owner, awaits profile before entering
+    let postLoginDone = null;
+    async function postLogin(user) {
+      if (!postLoginDone) {
+        postLoginDone = (async () => {
+          await ensureProfile(user);
+          localStorage.setItem('__eduskill_active_uid', user.uid);
+        })();
+      }
+      return postLoginDone;
+    }
+
+    auth.onAuthStateChanged(async function (user) {
       if (user && user.emailVerified) {
-        window.location.href = 'index.html';
+        await postLogin(user);
+        window.location.replace('index.html');
       }
     });
 
@@ -410,9 +422,11 @@
         case 'auth/network-request-failed':
           return 'Network error. Please check your internet connection.';
         case 'permission-denied':
-          return 'Action not permitted. If signing up, that username might already be in use.';
+          return 'Could not save your profile. Please try again or contact support.';
         case 'username-taken':
           return 'That username is already taken. Please choose another username.';
+        case 'auth/username-unsupported':
+          return err.message || 'Username lookup is currently unavailable. Please sign in with your email address.';
         case 'unavailable':
           return 'Service is temporarily unavailable. Please try again shortly.';
         case 'deadline-exceeded':
@@ -509,15 +523,15 @@
       statusEl.classList.remove('hidden');
 
       try {
-        if (unverifiedUserPending) {
-          await unverifiedUserPending.sendEmailVerification();
+        const u = auth.currentUser || unverifiedUserPending;
+        if (u) {
+          await u.sendEmailVerification();
         } else {
           // If session was cleared, temporary sign-in to resend
           const loginPass = document.getElementById('login-password').value;
           if (loginPass && unverifiedEmailPending) {
             const cred = await auth.signInWithEmailAndPassword(unverifiedEmailPending, loginPass);
             await cred.user.sendEmailVerification();
-            await auth.signOut();
           } else {
             statusEl.textContent = 'Please type your password above to authorize resending verification link.';
             statusEl.className = 'text-[11px] font-medium text-amber-700';
@@ -545,6 +559,10 @@
         statusEl.textContent = formatAuthError(err);
         statusEl.className = 'text-[11px] font-medium text-red-600';
         btn.disabled = false;
+      } finally {
+        // V2-MED-15: Keep user signed in until resend finishes, then sign out cleanly in finally
+        await auth.signOut().catch(() => {});
+        unverifiedUserPending = null;
       }
     }
 
@@ -604,7 +622,7 @@
     }
 
     // ══════════════════════════════════════════════════════════════════════════
-    // GOOGLE AUTH (POPUP FIRST, REDIRECT FALLBACK - V1-AUTH-03)
+    // GOOGLE AUTH (POPUP FIRST, REDIRECT FALLBACK - V1-AUTH-03, V2-HIGH-08)
     // ══════════════════════════════════════════════════════════════════════════
     async function signInWithGoogle() {
       clearSigninStatus();
@@ -634,22 +652,26 @@
         const result = await auth.signInWithPopup(provider);
         if (result && result.user) {
           showSigninStatus('Google sign-in verified! Entering dashboard...', 'success');
-          await handleAuthSuccess(result.user, 'google');
+          await postLogin(result.user);
+          window.location.replace('index.html');
           return;
         }
       } catch (err) {
-        // Fallback to redirect if popup is blocked by browser
-        if (err.code === 'auth/popup-blocked' || err.code === 'auth/cancelled-popup-request') {
+        setGoogleLoading(false);
+        // Ignore user cancellation/closing the popup (V2-HIGH-08)
+        if (err.code === 'auth/popup-closed-by-user' || err.code === 'auth/cancelled-popup-request') {
+          return;
+        }
+        // Fallback to redirect only if popup is blocked by browser
+        if (err.code === 'auth/popup-blocked') {
           try {
             await auth.signInWithRedirect(provider);
             return;
           } catch (redErr) {
-            setGoogleLoading(false);
             showSigninStatus(formatAuthError(redErr), 'error');
             return;
           }
         }
-        setGoogleLoading(false);
         showSigninStatus(formatAuthError(err), 'error');
       }
     }
@@ -658,20 +680,21 @@
     auth.getRedirectResult().then(async (credential) => {
       if (credential && credential.user) {
         showSigninStatus('Google sign-in verified! Entering dashboard...', 'success');
-        await handleAuthSuccess(credential.user, 'google');
+        await postLogin(credential.user);
+        window.location.replace('index.html');
       }
     }).catch(err => {
       showSigninStatus(formatAuthError(err), 'error');
     });
 
-    async function handleAuthSuccess(user, providerType) {
+    async function ensureProfile(user) {
       const uid = user.uid;
       localStorage.setItem('__eduskill_active_uid', uid);
 
       const userRef = db.collection('users').doc(uid);
       const snap = await userRef.get().catch(() => null);
       const name = user.displayName || (user.email ? user.email.split('@')[0] : 'User');
-      const email = user.email || '';
+      const email = (user.email || '').toLowerCase();
       const photo = user.photoURL || '';
 
       const profileData = {
@@ -690,8 +713,12 @@
       localStorage.setItem('userName', name);
       localStorage.setItem('userEmail', email);
       if (photo) localStorage.setItem('userPhoto', photo);
-
-      window.location.href = 'index.html';
+      if (snap && snap.exists) {
+        const data = snap.data() || {};
+        if (data.username) localStorage.setItem('username', data.username);
+        if (data.course) localStorage.setItem('userRole', data.course);
+        if (data.studentId) localStorage.setItem('studentId', data.studentId);
+      }
     }
 
     // ══════════════════════════════════════════════════════════════════════════
@@ -718,7 +745,7 @@
       try {
         let signInEmail = inputVal;
 
-        // Resolve username alias if no '@' present (V1-SEC-05)
+        // Resolve username alias if no '@' present (V1-SEC-05, V2-HIGH-07)
         if (!inputVal.includes('@')) {
           const cleanUsername = inputVal.toLowerCase();
           let resolvedEmail = null;
@@ -735,15 +762,12 @@
               throw { code: 'auth/too-many-requests' };
             } else if (resp.status === 400) {
               throw { code: 'auth/invalid-credential' };
-            } else if (resp.status === 503) {
-              // Fallback to client Firestore get if API server endpoint is not configured
-              const unameSnap = await db.collection('usernames').doc(cleanUsername).get().catch(() => null);
-              resolvedEmail = (unameSnap && unameSnap.exists) ? unameSnap.data()?.email : null;
+            } else if (resp.status === 503 || resp.status === 500) {
+              throw { code: 'auth/username-unsupported', message: 'Username lookup is currently unavailable. Please sign in with your email address.' };
             }
           } catch (e) {
             if (e.code) throw e;
-            const unameSnap = await db.collection('usernames').doc(cleanUsername).get().catch(() => null);
-            resolvedEmail = (unameSnap && unameSnap.exists) ? unameSnap.data()?.email : null;
+            throw { code: 'auth/invalid-credential' };
           }
 
           if (!resolvedEmail) {
@@ -754,33 +778,22 @@
 
         const credential = await auth.signInWithEmailAndPassword(signInEmail, password);
 
-        // Check Email Verification with live server refresh (V1-AUTH-02)
+        // Check Email Verification with live server refresh (V1-AUTH-02, V2-MED-15)
         await credential.user.reload().catch(() => {});
         if (!credential.user.emailVerified) {
           unverifiedUserPending = credential.user;
           showUnverifiedBox(signInEmail);
-          await auth.signOut(); // Keep unverified user logged out
+          // Keep user signed in for resend link; sign out happens in resendVerificationEmail or navigation
           btn.disabled = false;
           btn.innerHTML = '<i data-lucide="log-in" class="w-4 h-4"></i> Sign In to Dashboard';
           lucide.createIcons();
           return;
         }
 
-        // Authentication verified and successful
-        localStorage.setItem('__eduskill_active_uid', credential.user.uid);
-        try {
-          const userDoc = await db.collection('users').doc(credential.user.uid).get();
-          if (userDoc.exists && userDoc.data()) {
-            const data = userDoc.data();
-            if (data.name) localStorage.setItem('userName', data.name);
-            if (data.email) localStorage.setItem('userEmail', data.email);
-            if (data.username) localStorage.setItem('username', data.username);
-            if (data.course) localStorage.setItem('userRole', data.course);
-            if (data.studentId) localStorage.setItem('studentId', data.studentId);
-          }
-        } catch (_) {}
-
-        window.location.href = 'index.html';
+        // Authentication verified and successful (V2-HIGH-08)
+        showSigninStatus('Verified! Entering dashboard...', 'success');
+        await postLogin(credential.user);
+        window.location.replace('index.html');
       } catch (err) {
         showSigninStatus(formatAuthError(err), 'error');
         btn.disabled = false;
@@ -799,7 +812,9 @@
 
       const name = document.getElementById('signup-name').value.trim();
       const username = document.getElementById('signup-username').value.trim();
-      const email = document.getElementById('signup-email').value.trim();
+      // Normalize email & username to lowercase to prevent rules permission-denied (V2-HIGH-06)
+      const cleanUsername = username.toLowerCase();
+      const email = document.getElementById('signup-email').value.trim().toLowerCase();
       const course = document.getElementById('signup-course').value.trim();
       const studentId = document.getElementById('signup-student-id').value.trim();
       const password = document.getElementById('signup-password').value;
@@ -842,14 +857,33 @@
       btn.innerHTML = '<svg class="animate-spin h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path></svg> Creating account...';
       showSignupStatus('Registering account with Firebase...', 'info');
 
+      // Check username availability before creating auth account (V2-HIGH-07)
       try {
-        const cleanUsername = username.toLowerCase();
+        const checkResp = await fetch('/api/auth/resolve-username', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ check: cleanUsername })
+        });
+        if (checkResp.ok) {
+          const checkData = await checkResp.json();
+          if (checkData.available === false) {
+            showSignupStatus('That username is already taken. Please choose another username.', 'error');
+            btn.disabled = false;
+            btn.innerHTML = '<i data-lucide="user-plus" class="w-4 h-4"></i> Create Account & Send Verification';
+            lucide.createIcons();
+            return;
+          }
+        }
+      } catch (_) {
+        // Proceed if endpoint is unavailable; Firestore rules will enforce uniqueness
+      }
 
+      try {
         // 1. Create auth user first
         const userCredential = await auth.createUserWithEmailAndPassword(email, password);
         const uid = userCredential.user.uid;
 
-        // 2. Atomic batch write: users/{uid} profile AND usernames/{cleanUsername} reservation (V1-AUTH-01)
+        // 2. Atomic batch write: users/{uid} profile AND usernames/{cleanUsername} reservation (V1-AUTH-01, V2-HIGH-06)
         const batch = db.batch();
         const userRef = db.collection('users').doc(uid);
         const unameRef = db.collection('usernames').doc(cleanUsername);
@@ -875,7 +909,10 @@
           // Rollback: delete auth user immediately so account is not orphaned (V1-AUTH-01)
           console.error('[signup] Batch reservation failed, rolling back auth user:', batchErr);
           await userCredential.user.delete().catch(() => {});
-          if (batchErr.code === 'permission-denied' || (batchErr.message && batchErr.message.includes('permission'))) {
+          if (batchErr.code === 'permission-denied') {
+            throw { code: 'permission-denied', message: 'Could not save your profile. Please try again or contact support.' };
+          }
+          if (batchErr.code === 'already-exists') {
             throw { code: 'username-taken', message: 'That username is already taken. Please choose another username.' };
           }
           throw batchErr;
