@@ -684,18 +684,12 @@ Match the structure, depth and wording to the "${style}" style. Do not add any t
             const list = getJSON(NOTES_KEY, []);
             if (list.length >= 30) {
                 const oldestTopic = list[list.length - 1]?.topic || 'oldest note';
-                const confirmed = window.EduUI && typeof EduUI.confirmDialog === 'function'
-                    ? await EduUI.confirmDialog({
-                        title: 'Note Limit Reached',
-                        message: `You have reached the limit of 30 saved revision notes.\n\nSaving this note will remove your oldest saved note ("${oldestTopic}").\n\nDo you want to proceed and replace the oldest note?`,
-                        confirmLabel: 'Replace Oldest',
-                        cancelLabel: 'Keep Existing'
-                    })
-                    : confirm(
-                        `You have reached the limit of 30 saved revision notes.\n\n` +
-                        `Saving this note will remove your oldest saved note ("${oldestTopic}").\n\n` +
-                        `Do you want to proceed and replace the oldest note?`
-                    );
+                const confirmed = await EduUI.confirmDialog({
+                    title: 'Note Limit Reached',
+                    body: `You have reached the limit of 30 saved revision notes.\n\nSaving this note will remove your oldest saved note ("${oldestTopic}").\n\nDo you want to proceed and replace the oldest note?`,
+                    confirmText: 'Replace Oldest',
+                    cancelText: 'Keep Existing'
+                });
                 if (!confirmed) {
                     setStatus('Save cancelled. Existing notes were kept.', 'info');
                     return;
@@ -750,15 +744,13 @@ Match the structure, depth and wording to the "${style}" style. Do not add any t
         }
 
         async function deleteSaved(id) {
-            const confirmed = window.EduUI && typeof EduUI.confirmDialog === 'function'
-                ? await EduUI.confirmDialog({
-                    title: 'Delete Note',
-                    message: 'Delete this saved note?',
-                    confirmLabel: 'Delete Note',
-                    cancelLabel: 'Cancel',
-                    isDanger: true
-                })
-                : confirm('Delete this saved note?');
+            const confirmed = await EduUI.confirmDialog({
+                title: 'Delete Note',
+                body: 'Delete this saved note?',
+                confirmText: 'Delete Note',
+                cancelText: 'Cancel',
+                danger: true
+            });
             if (!confirmed) return;
             const list = getJSON(NOTES_KEY, []).filter(x => x.id !== id);
             localStorage.setItem(NOTES_KEY, JSON.stringify(list));

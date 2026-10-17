@@ -96,13 +96,12 @@
 
   // ── ACCESSIBLE CONFIRM MODAL (FOCUS-TRAPPED, ESC CLOSES) ───────────────────
   function confirmDialog(options = {}) {
-    const {
-      title = 'Are you sure?',
-      body = '',
-      confirmText = 'Confirm',
-      cancelText = 'Cancel',
-      danger = false
-    } = typeof options === 'string' ? { body: options } : options;
+    const o = typeof options === 'string' ? { body: options } : (options || {});
+    const title = o.title || 'Are you sure?';
+    const body = o.body ?? o.message ?? '';
+    const confirmText = o.confirmText ?? o.confirmLabel ?? 'Confirm';
+    const cancelText = o.cancelText ?? o.cancelLabel ?? 'Cancel';
+    const danger = !!(o.danger ?? o.isDanger);
 
     return new Promise((resolve) => {
       if (typeof document === 'undefined') return resolve(true);

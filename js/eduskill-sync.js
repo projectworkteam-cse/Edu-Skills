@@ -1,7 +1,7 @@
 // ══════════════════════════════════════════════════════════════════════════════
 // EDU-SKILL AI — HARDENED STORAGE & CLOUD SHARD SYNC ADAPTER (Phase 2)
 // ══════════════════════════════════════════════════════════════════════════════
-(function () {
+(function (root) {
   'use strict';
 
   const isShell = (window === window.top);

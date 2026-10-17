@@ -954,15 +954,13 @@
                 return;
             }
 
-            const confirmedDelete = window.EduUI && typeof EduUI.confirmDialog === 'function'
-                ? await EduUI.confirmDialog({
-                    title: 'Delete Account',
-                    message: 'FINAL WARNING: This will permanently delete your account, subjects, exams, and notes. This cannot be undone. Proceed?',
-                    confirmLabel: 'Permanently Delete',
-                    cancelLabel: 'Cancel',
-                    isDanger: true
-                })
-                : confirm('FINAL WARNING: This will permanently delete your account, subjects, exams, and notes. This cannot be undone. Proceed?');
+            const confirmedDelete = await EduUI.confirmDialog({
+                title: 'Delete Account',
+                body: 'FINAL WARNING: This will permanently delete your account, subjects, exams, and notes. This cannot be undone. Proceed?',
+                confirmText: 'Permanently Delete',
+                cancelText: 'Cancel',
+                danger: true
+            });
             if (!confirmedDelete) {
                 return;
             }
@@ -1009,10 +1007,10 @@
             const confirmedReset = window.EduUI && typeof EduUI.confirmDialog === 'function'
                 ? await EduUI.confirmDialog({
                     title: 'Reset Study Data',
-                    message: 'Are you sure you want to reset all stored subjects, exams, and settings? This will clear all local study data for your account.',
-                    confirmLabel: 'Reset Data',
-                    cancelLabel: 'Cancel',
-                    isDanger: true
+                    body: 'Are you sure you want to reset all stored subjects, exams, and settings? This will clear all local study data for your account.',
+                    confirmText: 'Reset Data',
+                    cancelText: 'Cancel',
+                    danger: true
                 })
                 : confirm('Are you sure you want to reset all stored subjects, exams, and settings? This will clear all local study data for your account.');
             if (!confirmedReset) return;

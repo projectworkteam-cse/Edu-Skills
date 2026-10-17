@@ -794,9 +794,9 @@ Only JSON.`;
                 const confirmed = window.EduUI && typeof EduUI.confirmDialog === 'function'
                     ? await EduUI.confirmDialog({
                         title: 'Past Exam Date',
-                        message: `The date "${date}" is in the past. Do you want to save this as a past exam record?`,
-                        confirmLabel: 'Save Past Exam',
-                        cancelLabel: 'Cancel'
+                        body: `The date "${date}" is in the past. Do you want to save this as a past exam record?`,
+                        confirmText: 'Save Past Exam',
+                        cancelText: 'Cancel'
                     })
                     : confirm(`The date "${date}" is in the past. Do you want to save this as a past exam record?`);
                 if (!confirmed) {
@@ -1030,10 +1030,10 @@ Only JSON.`;
             const confirmed = window.EduUI && typeof EduUI.confirmDialog === 'function'
                 ? await EduUI.confirmDialog({
                     title: 'Delete Subject',
-                    message: msg,
-                    confirmLabel: 'Delete Subject',
-                    cancelLabel: 'Cancel',
-                    isDanger: true
+                    body: msg,
+                    confirmText: 'Delete Subject',
+                    cancelText: 'Cancel',
+                    danger: true
                 })
                 : confirm(msg);
             if (!confirmed) return;
@@ -1077,10 +1077,10 @@ Only JSON.`;
                 const confirmed = window.EduUI && typeof EduUI.confirmDialog === 'function'
                     ? await EduUI.confirmDialog({
                         title: 'Delete Exam',
-                        message: `Are you sure you want to delete exam "${exam.name}"?`,
-                        confirmLabel: 'Delete Exam',
-                        cancelLabel: 'Cancel',
-                        isDanger: true
+                        body: `Are you sure you want to delete exam "${exam.name}"?`,
+                        confirmText: 'Delete Exam',
+                        cancelText: 'Cancel',
+                        danger: true
                     })
                     : confirm(`Are you sure you want to delete exam "${exam.name}"?`);
                 if (!confirmed) return;

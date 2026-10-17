@@ -2194,15 +2194,13 @@ INSTRUCTIONS:
 
         async function clearChatHistory() {
             if (chatHistory.length === 0) return;
-            const confirmed = window.EduUI && typeof EduUI.confirmDialog === 'function'
-                ? await EduUI.confirmDialog({
-                    title: 'Clear Chat History',
-                    message: 'Are you sure you want to clear your AI chat history?',
-                    confirmLabel: 'Clear Chat',
-                    cancelLabel: 'Cancel',
-                    isDanger: true
-                })
-                : confirm('Are you sure you want to clear your AI chat history?');
+            const confirmed = await EduUI.confirmDialog({
+                title: 'Clear Chat History',
+                body: 'Are you sure you want to clear your AI chat history?',
+                confirmText: 'Clear Chat',
+                cancelText: 'Cancel',
+                danger: true
+            });
             if (!confirmed) return;
             chatHistory = [];
             try {

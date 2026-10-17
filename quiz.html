@@ -1094,14 +1094,12 @@ Format:
 
             const unanswered = selectedAnswers.filter(a => a === null).length;
             if (unanswered > 0) {
-                const proceed = window.EduUI && typeof EduUI.confirmDialog === 'function'
-                    ? await EduUI.confirmDialog({
-                        title: 'Unanswered Questions',
-                        message: `You have ${unanswered} unanswered question(s). Submit anyway?`,
-                        confirmLabel: 'Submit Anyway',
-                        cancelLabel: 'Keep Answering'
-                    })
-                    : confirm(`You have ${unanswered} unanswered question(s). Submit anyway?`);
+                const proceed = await EduUI.confirmDialog({
+                    title: 'Unanswered Questions',
+                    body: `You have ${unanswered} unanswered question(s). Submit anyway?`,
+                    confirmText: 'Submit Anyway',
+                    cancelText: 'Keep Answering'
+                });
                 if (!proceed) return;
             }
 
@@ -1321,15 +1319,13 @@ Format:
 
         async function clearHistory() {
             if (!getHistory().length) return;
-            const confirmed = window.EduUI && typeof EduUI.confirmDialog === 'function'
-                ? await EduUI.confirmDialog({
-                    title: 'Clear History',
-                    message: 'Clear all quiz history? This cannot be undone.',
-                    confirmLabel: 'Clear History',
-                    cancelLabel: 'Cancel',
-                    isDanger: true
-                })
-                : confirm('Clear all quiz history? This cannot be undone.');
+            const confirmed = await EduUI.confirmDialog({
+                title: 'Clear History',
+                body: 'Clear all quiz history? This cannot be undone.',
+                confirmText: 'Clear History',
+                cancelText: 'Cancel',
+                danger: true
+            });
             if (!confirmed) return;
 
             localStorage.setItem(HISTORY_KEY, JSON.stringify([]));
