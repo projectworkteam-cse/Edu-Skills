@@ -1670,12 +1670,14 @@
                 return;
             }
 
+            const safeName = (s) => String(s || '').replace(/[\r\n\u0000-\u001f]/g, ' ').slice(0, 60);
+
             // Subject context with difficulty and per-topic done status
             const context = savedSubjects.map(s => {
                 const topicsStr = s.topics
-                    ? s.topics.map(t => `${t.topic || t.name}${t.id ? ' [id: ' + t.id + ']' : ''}${t.done ? ' [COMPLETED]' : ''} (${t.minutes || 30} mins)`).join(', ')
+                    ? s.topics.map(t => `${safeName(t.topic || t.name)}${t.id ? ' [id: ' + t.id + ']' : ''}${t.done ? ' [COMPLETED]' : ''} (${Number(t.minutes) || 30} mins)`).join(', ')
                     : 'General study';
-                return `- Subject: ${s.name} (id: ${s.id || s.sid || ''}) (${s.difficulty} difficulty) | Total study time: ${s.totalMinutes || 0} mins | Topics: ${topicsStr}`;
+                return `- Subject: ${safeName(s.name)} (id: ${s.id || s.sid || ''}) (${safeName(s.difficulty)} difficulty) | Total study time: ${Number(s.totalMinutes) || 0} mins | Topics: ${topicsStr}`;
             }).join('\n');
 
             // Upcoming exams (priority signal)
@@ -1687,7 +1689,7 @@
                     const daysLeft = (window.EduDates && window.EduDates.daysUntil)
                         ? window.EduDates.daysUntil(e.date)
                         : Math.round((new Date(e.date + 'T00:00:00') - new Date()) / 86400000);
-                    return { name: e.name, subject: e.subject, date: e.date, daysLeft };
+                    return { name: safeName(e.name), subject: safeName(e.subject), date: safeName(e.date), daysLeft };
                 })
                 .filter(e => e.daysLeft !== null && e.daysLeft >= 0)
                 .sort((a, b) => a.daysLeft - b.daysLeft)
@@ -1703,12 +1705,12 @@
                 : 'No timetable generated yet.';
 
             // Tasks already in today's list (AI must not repeat them)
-            const existingTasks = loadTasks().map(t => t.text).join('\n') || 'None yet';
+            const existingTasks = loadTasks().map(t => safeName(t.text)).join('\n') || 'None yet';
 
             // Detected weak topics (from AI Insights, or computed locally)
             const weakTopics = getWeakTopics();
             const weakContext = weakTopics.length
-                ? weakTopics.map(w => `- ${w.topic} (${w.subject}) - weakness score ${w.score}%`).join('\n')
+                ? weakTopics.map(w => `- ${safeName(w.topic)} (${safeName(w.subject)}) - weakness score ${w.score}%`).join('\n')
                 : 'None detected yet.';
 
             btn.disabled = true;
@@ -2393,8 +2395,6 @@ INSTRUCTIONS:
             if (message.length > 1000) {
                 if (window.EduUI && typeof EduUI.toast === 'function') {
                     EduUI.toast('Please limit your message to 1,000 characters for optimal AI assistance.', 'warning');
-                } else {
-                    alert('Please limit your message to 1,000 characters for optimal AI assistance.');
                 }
                 return;
             }

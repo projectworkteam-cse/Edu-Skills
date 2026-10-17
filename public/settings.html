@@ -1030,15 +1030,13 @@
         }
 
         async function clearAllData() {
-            const confirmedReset = window.EduUI && typeof EduUI.confirmDialog === 'function'
-                ? await EduUI.confirmDialog({
-                    title: 'Reset Study Data',
-                    body: 'Are you sure you want to reset all stored subjects, exams, and settings? This will clear all local study data for your account.',
-                    confirmText: 'Reset Data',
-                    cancelText: 'Cancel',
-                    danger: true
-                })
-                : confirm('Are you sure you want to reset all stored subjects, exams, and settings? This will clear all local study data for your account.');
+            const confirmedReset = await EduUI.confirmDialog({
+                title: 'Reset Study Data',
+                body: 'Are you sure you want to reset all stored subjects, exams, and settings? This will clear all local study data for your account.',
+                confirmText: 'Reset Data',
+                cancelText: 'Cancel',
+                danger: true
+            });
             if (!confirmedReset) return;
 
             try {

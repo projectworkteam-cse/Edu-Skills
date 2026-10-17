@@ -183,3 +183,13 @@ body {
     scroll-behavior: auto !important;
   }
 }
+
+/* V2-MED-14: Alert status banner utilities (Tailwind replacements) */
+.bg-green-50 { background-color: #f0fdf4; }
+.bg-red-50 { background-color: #fef2f2; }
+.border-green-200 { border-color: #bbf7d0; }
+.border-red-200 { border-color: #fecaca; }
+.text-green-700 { color: #15803d; }
+.text-red-700, .text-red-600 { color: #b91c1c; }
+.text-purple-700 { color: #7e22ce; }
+

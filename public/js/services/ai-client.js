@@ -155,7 +155,11 @@
     };
   };
 
-  const api = { ask, parseAiJson, AiError, AiParseError, eduskillGroqFetch };
+  function safeName(s) {
+    return String(s || '').replace(/[\r\n\u0000-\u001f]/g, ' ').slice(0, 60);
+  }
+
+  const api = { ask, parseAiJson, AiError, AiParseError, safeName, eduskillGroqFetch };
   if (typeof module !== 'undefined' && module.exports) {
     module.exports = api;
   } else {

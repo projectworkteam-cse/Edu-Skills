@@ -829,8 +829,9 @@
             const top = list.slice(0, 8);
 
             try {
+                const safeName = (s) => String(s || '').replace(/[\r\n\u0000-\u001f]/g, ' ').slice(0, 60);
                 const payload = top.map(w =>
-                    `- ${w.subject} / ${w.topic} | weakness ${w.score}% (${w.severity}) | ${w.reason}`
+                    `- ${safeName(w.subject)} / ${safeName(w.topic)} | weakness ${w.score}% (${safeName(w.severity)}) | ${safeName(w.reason)}`
                 ).join('\n');
 
                 const prompt = `You are an expert academic study coach.
@@ -1019,8 +1020,9 @@ Return ONLY valid JSON (no markdown) in this exact shape:
             btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Predicting...';
 
             try {
+                const safeName = (s) => String(s || '').replace(/[\r\n\u0000-\u001f]/g, ' ').slice(0, 60);
                 const payload = list.map(r =>
-                    `- ${r.exam} (${r.subject}) | date ${r.date} | ${r.daysLeft} day(s) left | readiness ${r.readiness}% | topics ${r.topicsDone}/${r.topicsTotal} done | quiz ${r.quizPct === null ? 'n/a' : r.quizPct + '%'} | verdict ${r.verdict}`
+                    `- ${safeName(r.exam)} (${safeName(r.subject)}) | date ${safeName(r.date)} | ${r.daysLeft} day(s) left | readiness ${r.readiness}% | topics ${r.topicsDone}/${r.topicsTotal} done | quiz ${r.quizPct === null ? 'n/a' : r.quizPct + '%'} | verdict ${safeName(r.verdict)}`
                 ).join('\n');
 
                 const prompt = `You are an exam readiness analyst.

@@ -1250,9 +1250,10 @@
                 smartWeakness = null;
             }
 
+            const safeName = (s) => String(s || '').replace(/[\r\n\u0000-\u001f]/g, ' ').slice(0, 60);
             const weakList = weakKeys.slice(0, 8).map(k => {
                 const parts = k.split('||');
-                return `${parts[1]} (${parts[0]})`;
+                return `${safeName(parts[1])} (${safeName(parts[0])})`;
             }).join(', ') || 'none detected';
 
             const examCount = ((window.EduStorage && window.EduStorage.readJSON) ? window.EduStorage.readJSON('exams', []) : [])
