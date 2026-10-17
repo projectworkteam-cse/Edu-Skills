@@ -1,6 +1,8 @@
 import sys, json, threading, http.server, socketserver, functools, os
 from playwright.sync_api import sync_playwright
 ROOT=sys.argv[1]; MODE=sys.argv[2] if len(sys.argv)>2 else 'seeded'
+if os.path.isdir(os.path.join(ROOT, 'public')) and os.path.exists(os.path.join(ROOT, 'public', 'index.html')):
+    ROOT = os.path.join(ROOT, 'public')
 class Q(http.server.SimpleHTTPRequestHandler):
     def log_message(self,*a): pass
 class SilentServer(socketserver.ThreadingTCPServer):

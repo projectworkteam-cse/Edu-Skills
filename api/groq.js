@@ -60,23 +60,35 @@ module.exports = async function handler(req, res) {
 
   const payload = { model: MODEL, messages, temperature, max_completion_tokens: profile.max, reasoning_effort: profile.effort };
   let last = { status: 502, message: 'AI service failed.' };
+  const deadline = Date.now() + 24000; // overall request deadline < Vercel 30s maxDuration (V2-MED-23)
 
   for (let i = 0; i < keys.length; i++) {
+    const left = deadline - Date.now();
+    if (left < 2000) {
+      last = { status: 504, message: 'AI is busy, please try again.' };
+      break;
+    }
+    const callTimeout = Math.min(left, 12000);
     const k = (next + i) % keys.length;
     try {
       let r = await fetch('https://api.groq.com/openai/v1/chat/completions', {
         method: 'POST',
         headers: { Authorization: `Bearer ${keys[k]}`, 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
-        signal: AbortSignal.timeout(20000)
+        signal: AbortSignal.timeout(callTimeout)
       });
       if (r.status === 400) { // some models reject reasoning_effort; retry once without it
+        const retryLeft = deadline - Date.now();
+        if (retryLeft < 2000) {
+          last = { status: 504, message: 'AI is busy, please try again.' };
+          break;
+        }
         const { reasoning_effort, ...plain } = payload;
         r = await fetch('https://api.groq.com/openai/v1/chat/completions', {
           method: 'POST',
           headers: { Authorization: `Bearer ${keys[k]}`, 'Content-Type': 'application/json' },
           body: JSON.stringify(plain),
-          signal: AbortSignal.timeout(20000)
+          signal: AbortSignal.timeout(Math.min(retryLeft, 12000))
         });
       }
       const data = await r.json().catch(() => ({}));
@@ -94,5 +106,6 @@ module.exports = async function handler(req, res) {
       last = { status: e.name === 'TimeoutError' ? 504 : 502, message: e.name === 'TimeoutError' ? 'AI request timed out.' : 'AI service unreachable.' };
     }
   }
-  return err(res, last.status >= 400 && last.status < 600 ? last.status : 502, 'ai_failed', last.message);
+  const status = last.status >= 400 && last.status < 600 ? last.status : 502;
+  return err(res, status, status === 504 ? 'ai_busy' : 'ai_failed', status === 504 ? 'AI is busy, please try again.' : last.message);
 };

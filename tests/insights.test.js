@@ -1,7 +1,7 @@
 // tests/insights.test.js - verifies insights data unwrapping (V2-HIGH-10)
 const test = require('node:test');
 const assert = require('node:assert');
-const { unwrapResult, readWeakTopics } = require('../js/domain/insights.js');
+const { unwrapResult, readWeakTopics } = require('../public/js/domain/insights.js');
 
 test('unwrapResult: accepts legacy bare array', () => {
   const legacy = [{ topic: 'Algebra', score: 80 }];

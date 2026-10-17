@@ -1,9 +1,9 @@
 // scripts/contract-check.mjs - cheap guard for cross-file contracts (V2-MED-26).
 // Run: node scripts/contract-check.mjs   (exit 1 on any ERROR)
-import { readFileSync, readdirSync, statSync } from 'node:fs';
+import { readFileSync, readdirSync, statSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
 
-const SKIP = new Set(['node_modules', '.git', 'docs', 'tests', 'public', 'out', 'scripts']);
+const SKIP = new Set(['node_modules', '.git', 'docs', 'tests', 'out', 'scripts']);
 const files = [];
 (function walk(d) {
   for (const n of readdirSync(d)) {
@@ -18,7 +18,8 @@ const src = (f) => readFileSync(f, 'utf8');
 const line = (s, i) => s.slice(0, i).split('\n').length;
 
 // 1. EduStorage.<member> must be exported by js/services/storage.js
-const st = src('js/services/storage.js');
+const storagePath = existsSync('public/js/services/storage.js') ? 'public/js/services/storage.js' : 'js/services/storage.js';
+const st = src(storagePath);
 const exp = (st.match(/(?:api|EduStorage)\s*=\s*\{([^}]*)\}/) || st.match(/return\s*\{([^}]*)\}/) || [, ''])[1]
   .split(',').map((x) => x.trim().split(':')[0]).filter(Boolean);
 for (const f of files) {
@@ -37,7 +38,7 @@ for (const f of files) {
 }
 
 // 3. IIFE without parameter but using root.
-for (const f of files.filter((x) => x.startsWith('js'))) {
+for (const f of files.filter((x) => x.includes('js'))) {
   const s = src(f);
   if (/^\(function\s*\(\s*\)/m.test(s) && /\broot\./.test(s) && !/\bconst root\b|\blet root\b|\bvar root\b/.test(s))
     errors.push(`${f}: uses "root" but the IIFE has no "root" parameter (ReferenceError at runtime)`);

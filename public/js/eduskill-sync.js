@@ -45,11 +45,18 @@
   const channel = (typeof BroadcastChannel !== 'undefined' && typeof window !== 'undefined') ? new BroadcastChannel('eduskill') : null;
 
   let uid = '';
-  // V1-AUTH-05: Shell does NOT trust localStorage cached UID on boot to avoid stale data flash
+  // V2-MED-25: Frames get uid from window.parent.__eduskillUid without stale localStorage reads
   if (!isShell) {
     try {
-      uid = nativeGet.call(window.localStorage, ACTIVE) || '';
-    } catch (_) {}
+      uid = (window.parent && window.parent !== window && window.parent.__eduskillUid) || null;
+    } catch (_) {
+      uid = null;
+    }
+    if (!uid) {
+      try {
+        uid = nativeGet.call(window.localStorage, ACTIVE) || '';
+      } catch (_) {}
+    }
   }
 
   let syncing = false;
@@ -420,6 +427,7 @@
     if (!user || !db) return;
     const newUid = user.uid;
     uid = newUid;
+    if (isShell) window.__eduskillUid = uid;
     nativeSet.call(window.localStorage, ACTIVE, uid);
 
     try {
@@ -713,12 +721,15 @@
         }
 
         if (isShell) {
+          window.__eduskillUid = user.uid;
+          window.dispatchEvent(new CustomEvent('eduskill:auth-ready', { detail: { uid: user.uid } }));
           hydrateCloud(user);
         } else {
           uid = user.uid;
           nativeSet.call(window.localStorage, ACTIVE, uid);
         }
       } else {
+        if (isShell) window.__eduskillUid = null;
         purgeRaw();
         loadedShards.clear();
         nativeRemove.call(window.localStorage, ACTIVE);

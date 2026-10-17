@@ -1,4 +1,4 @@
-// public/js/domain/insights.js - shared accessor for insights snapshots (V2-HIGH-10)
+// js/domain/insights.js - shared accessor for insights snapshots (V2-HIGH-10)
 (function (root) {
   function unwrapResult(v) {
     if (Array.isArray(v)) return v;

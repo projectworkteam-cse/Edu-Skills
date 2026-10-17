@@ -1,10 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<!-- EDU-SKILL AI: per-user Firebase data isolation + cloud sync -->
-<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-auth-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
+<!-- EDU-SKILL AI: per-user data isolation + sync -->
 <script src="js/services/sync-shards.js"></script>
 <script src="js/services/storage.js"></script>
 <script src="js/lib/ui.js"></script>
@@ -778,6 +775,10 @@
             element.classList.add('active');
         }
 
+        function getFb() {
+            return (typeof window !== 'undefined' && window.firebase) || (typeof window !== 'undefined' && window.parent && window.parent !== window && window.parent.firebase) || null;
+        }
+
         function loadSavedSettings() {
             userNameInput.value = localStorage.getItem('userName') || '';
             const email = localStorage.getItem('userEmail') || (window.eduskillAuth && window.eduskillAuth.currentUser ? window.eduskillAuth.currentUser.email : '');
@@ -790,8 +791,9 @@
             toggleStudyReminder.checked = (localStorage.getItem('pref_study_reminder') !== 'false');
 
             // Detect if logged in via Google OAuth
-            if (window.firebase && window.firebase.auth) {
-                const u = window.firebase.auth().currentUser;
+            const fb = getFb();
+            if (fb && fb.auth) {
+                const u = fb.auth().currentUser;
                 if (u && u.providerData && u.providerData.some(p => p.providerId === 'google.com')) {
                     const notice = document.getElementById('googleAuthNotice');
                     const form = document.getElementById('passwordChangeForm');
@@ -862,7 +864,8 @@
                 return;
             }
 
-            const auth = window.firebase && window.firebase.auth ? window.firebase.auth() : null;
+            const fb = getFb();
+            const auth = fb && fb.auth ? fb.auth() : null;
             const user = auth ? auth.currentUser : null;
             if (!user || !user.email) {
                 showToast('Active session not found. Please log in again.', false);
@@ -870,7 +873,7 @@
             }
 
             try {
-                const cred = firebase.auth.EmailAuthProvider.credential(user.email, curr);
+                const cred = fb.auth.EmailAuthProvider.credential(user.email, curr);
                 await user.reauthenticateWithCredential(cred);
                 await user.updatePassword(next);
                 document.getElementById('currPasswordInput').value = '';
@@ -952,8 +955,9 @@
 
         // Delete Account (V1-AUTH-07, V2-HIGH-09)
         async function deleteUserAccount() {
-            const auth = window.firebase && window.firebase.auth ? window.firebase.auth() : null;
-            const db = window.firebase && window.firebase.firestore ? window.firebase.firestore() : null;
+            const fb = getFb();
+            const auth = fb && fb.auth ? fb.auth() : null;
+            const db = fb && fb.firestore ? fb.firestore() : null;
             const user = auth ? auth.currentUser : null;
             if (!user) {
                 showToast('You must be signed in to delete your account.', false);
@@ -982,8 +986,8 @@
             try {
                 // 1) Reauthenticate if Google provider before deleting
                 const isGoogle = (user.providerData || []).some(p => p.providerId === 'google.com');
-                if (isGoogle && typeof user.reauthenticateWithPopup === 'function' && window.firebase?.auth?.GoogleAuthProvider) {
-                    await user.reauthenticateWithPopup(new firebase.auth.GoogleAuthProvider());
+                if (isGoogle && typeof user.reauthenticateWithPopup === 'function' && fb?.auth?.GoogleAuthProvider) {
+                    await user.reauthenticateWithPopup(new fb.auth.GoogleAuthProvider());
                 }
 
                 // 2) Batch delete all app shards (including tasks_YYYY_MM), username doc, and user doc

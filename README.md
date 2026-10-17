@@ -45,7 +45,7 @@ A lightweight, accessible, privacy-respecting student study companion and academ
 - **Authentication**: Firebase Auth 10.12.0 compat (Email/Password with 8-character minimum, atomic Firestore username registration with rollback, Google OAuth popup with redirect fallback).
 - **Database**: Cloud Firestore with multi-shard isolation (`users/{uid}/app/{core,quiz,timetable,notes,state}`) and strict security rules enforcing owner-only read/write access.
 - **Serverless Endpoints (Vercel)**:
-  - `POST /api/groq`: Serverless Node.js proxy with Firebase Identity Toolkit verification, verified-email check, per-user in-memory sliding window rate limits, token ceilings per feature, and server-side key pool rotation.
+  - `POST /api/groq`: Serverless Node.js proxy with Firebase Identity Toolkit verification, verified-email check, per-user in-memory fixed-window rate limits (best effort per serverless instance), token ceilings per feature, overall request deadlines (24s), and server-side key pool rotation.
   - `POST /api/send-email`: Serverless transactional mailer via Brevo; recipient strictly locked to verified token email.
   - `POST /api/auth/resolve-username`: Serverless username-to-email resolver with strict IP rate limiting.
 
@@ -65,6 +65,7 @@ All sensitive secrets are kept strictly out of client source code. Secrets are m
 | `FIREBASE_STORAGE_BUCKET` | `.env`, `js/env.js`, Vercel | Firebase Storage Bucket. |
 | `FIREBASE_MESSAGING_SENDER_ID` | `.env`, `js/env.js`, Vercel | Messaging sender identifier. |
 | `FIREBASE_APP_ID` | `.env`, `js/env.js`, Vercel | Firebase Web App App ID. |
+| `FIREBASE_SERVICE_ACCOUNT` | `.env`, Vercel (Optional) | Server-only Firebase admin credentials JSON for server-side username resolution. |
 | `GROQ_API_KEY` | `.env`, Vercel | Private server API key for Groq Cloud LLM service. |
 | `GROQ_API_KEYS` | `.env`, Vercel (Optional) | Comma-separated list of fallback Groq keys for automatic failover. |
 | `GROQ_MODEL` | `.env`, Vercel (Optional) | Target model override (defaults to `openai/gpt-oss-120b`). |
@@ -72,7 +73,7 @@ All sensitive secrets are kept strictly out of client source code. Secrets are m
 | `MAIL_FROM` / `BREVO_SENDER_EMAIL` | `.env`, Vercel | Verified sender email in your Brevo account. |
 | `BREVO_SENDER_NAME` | `.env`, Vercel | Sender display name (e.g. `EDU-SKILL'S AI`). |
 
-> **Security Rule**: `vercel.json` blocks all incoming HTTP requests to `/.env`, and `.gitignore` ignores `.env` and `docs/`.
+> **Security Rule**: Sensitive server files (`.env*`, `firestore.rules`, `lib/`, `tests/`, `docs/`) are excluded from deployment via `.vercelignore` and `.gitignore`. Only static client assets in `public/` are served (`outputDirectory: "public"`).
 
 ---
 

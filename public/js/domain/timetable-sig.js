@@ -1,4 +1,4 @@
-// public/js/domain/timetable-sig.js - decides WHEN the timetable must be rebuilt (V1-FUNC-09, V2-HIGH-11).
+// js/domain/timetable-sig.js - decides WHEN the timetable must be rebuilt (V1-FUNC-09, V2-HIGH-11).
 (function (root) {
   function hash(str) {
     let h = 5381;

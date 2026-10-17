@@ -76,3 +76,17 @@ test('legacy client without "feature" still works during the 2-week transition',
   const r = await call(handler, { headers: good(), body: { model: 'x', messages: [{ role: 'user', content: 'hi' }] } });
   assert.strictEqual(r.code, 200);
 });
+
+test('handles timeout gracefully and returns 504 (V2-MED-23)', async () => {
+  mockFetch(async (url, opts) => {
+    if (String(url).includes('identitytoolkit')) {
+      return { ok: true, json: async () => ({ users: [{ localId: 'u-timeout', email: 'a@b.c', emailVerified: true }] }) };
+    }
+    const err = new Error('The operation was aborted');
+    err.name = 'TimeoutError';
+    throw err;
+  });
+  const r = await call(handler, { headers: good(), body: { feature: 'chat', messages: [{ role: 'user', content: 'hi' }] } });
+  assert.strictEqual(r.code, 504);
+  assert.strictEqual(r.body.error.code, 'ai_busy');
+});

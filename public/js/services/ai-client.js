@@ -1,4 +1,4 @@
-// public/js/services/ai-client.js - the only function pages use to call AI: EduAI.ask(feature, messages, opts)
+// js/services/ai-client.js - the only function pages use to call AI: EduAI.ask(feature, messages, opts)
 // Also provides EduAI.parseAiJson(text, schemaCheck) for strict JSON validation (V1-AI-01, V1-AI-02, V1-AI-04, V2-MED-20).
 (function (root) {
   class AiError extends Error {

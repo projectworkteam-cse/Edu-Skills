@@ -1,7 +1,7 @@
 // tests/tasks.test.js - verifies task validation, normalization, and ID-based completion (V1-FUNC-01, V1-FUNC-02, V2-HIGH-12, V2-MED-19)
 const test = require('node:test');
 const assert = require('node:assert');
-const { normalizeAiTasks, newManualTask, completeLinkedTasks, countCompleted } = require('../js/domain/tasks.js');
+const { normalizeAiTasks, newManualTask, completeLinkedTasks, countCompleted } = require('../public/js/domain/tasks.js');
 
 test('normalizeAiTasks handles malformed, empty, or non-array inputs gracefully', () => {
   assert.deepStrictEqual(normalizeAiTasks(null), []);

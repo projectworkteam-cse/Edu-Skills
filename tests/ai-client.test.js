@@ -1,7 +1,7 @@
 // tests/ai-client.test.js - verifies EduAI.ask error handling, retries, and parseAiJson (V1-AI-01, V1-AI-02, V1-AI-04, V2-MED-20)
 const test = require('node:test');
 const assert = require('node:assert');
-const { ask, parseAiJson, AiError, AiParseError } = require('../js/services/ai-client.js');
+const { ask, parseAiJson, AiError, AiParseError } = require('../public/js/services/ai-client.js');
 
 test('parseAiJson extracts valid JSON from markdown code fences and cleans strings', () => {
   const markdownJson = '```json\n{"topics": ["Calculus", "Physics"], "count": 2}\n```';

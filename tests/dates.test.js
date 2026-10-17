@@ -1,7 +1,7 @@
 // tests/dates.test.js - verifies date maths, local timezone day key, and daysUntil calculation
 const test = require('node:test');
 const assert = require('node:assert');
-const { dateKey, todayKey, daysUntil } = require('../js/domain/dates.js');
+const { dateKey, todayKey, daysUntil } = require('../public/js/domain/dates.js');
 
 test('dateKey formats local calendar day as YYYY-MM-DD', () => {
   const d = new Date(2026, 9, 16); // Oct 16 2026

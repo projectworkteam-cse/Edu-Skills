@@ -1,4 +1,4 @@
-// public/js/services/storage.js - unified safe storage client with corruption recovery and cross-frame event bridge
+// js/services/storage.js - mirror for flat layout
 (function (root) {
   const channel = (typeof BroadcastChannel !== 'undefined' && typeof window !== 'undefined') ? new BroadcastChannel('eduskill') : null;
 

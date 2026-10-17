@@ -1,4 +1,4 @@
-// public/js/domain/tasks.js - tasks are linked to topics by ID, never by guessing from text (V1-FUNC-01, V1-FUNC-02, V2-HIGH-12, V2-MED-19).
+// js/domain/tasks.js - tasks are linked to topics by ID, never by guessing from text (V1-FUNC-01, V1-FUNC-02, V2-HIGH-12, V2-MED-19).
 (function (root) {
   const uid = (p = 'tsk') => p + '_' + Math.random().toString(36).slice(2, 10) + Date.now().toString(36).slice(-4);
   const clean = (s, n = 200) => String(s == null ? '' : s).replace(/\s+/g, ' ').trim().slice(0, n);

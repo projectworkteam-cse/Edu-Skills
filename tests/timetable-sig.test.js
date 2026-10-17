@@ -1,7 +1,7 @@
 // tests/timetable-sig.test.js - verifies timetable signature stability and topic done exclusion (V1-FUNC-09, V2-HIGH-11)
 const test = require('node:test');
 const assert = require('node:assert');
-const { scheduleSignature } = require('../js/domain/timetable-sig.js');
+const { scheduleSignature } = require('../public/js/domain/timetable-sig.js');
 
 test('scheduleSignature remains identical when topic done status changes', () => {
   const subjectsBefore = [

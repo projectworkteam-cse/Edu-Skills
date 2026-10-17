@@ -1141,7 +1141,7 @@
 
         <div class="content-area">
 
-            <iframe id="pageViewport" class="iframe-container" src="dash.html" title="Study Planner Content"></iframe>
+            <iframe id="pageViewport" class="iframe-container" src="about:blank" title="Study Planner Content"></iframe>
 
             <div class="right-panel" id="rightPanel">
 
@@ -1287,8 +1287,20 @@
             closeSidebar();
         }
 
-        window.addEventListener('hashchange', syncRouteFromHash);
-        window.addEventListener('DOMContentLoaded', syncRouteFromHash);
+        function onAuthReadyNav() {
+            if (window.__eduskillUid) {
+                syncRouteFromHash();
+            }
+        }
+        window.addEventListener('eduskill:auth-ready', onAuthReadyNav);
+        window.addEventListener('eduskill:hydrated', onAuthReadyNav);
+        window.addEventListener('eduskill-cloud-ready', onAuthReadyNav);
+        window.addEventListener('hashchange', () => {
+            if (window.__eduskillUid) syncRouteFromHash();
+        });
+        window.addEventListener('DOMContentLoaded', () => {
+            if (window.__eduskillUid) syncRouteFromHash();
+        });
 
         document.addEventListener('keydown', (e) => {
             if (e.key === 'Escape') {

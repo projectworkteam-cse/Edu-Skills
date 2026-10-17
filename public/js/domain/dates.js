@@ -1,4 +1,4 @@
-// public/js/domain/dates.js - ONE place for date maths (replaces 6 copies of todayKey + 8 copies of daysLeft).
+// js/domain/dates.js - ONE place for date maths (replaces 6 copies of todayKey + 8 copies of daysLeft).
 (function (root) {
   const pad = (n) => String(n).padStart(2, '0');
 
