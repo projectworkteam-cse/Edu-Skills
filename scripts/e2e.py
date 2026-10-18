@@ -32,7 +32,7 @@ with sync_playwright() as p:
     def route(r):
         u=r.request.url
         if 'gstatic.com/firebasejs' in u: return r.fulfill(status=200,content_type='application/javascript',body=FB_STUB.replace('%SEED%',json.dumps(SEED)) if 'firebase-app-compat' in u else '//stub')
-        if 'chart' in u and 'jsdelivr' in u: return r.fulfill(status=200,content_type='application/javascript',body=CHART_STUB)
+        if 'chart' in u: return r.fulfill(status=200,content_type='application/javascript',body=CHART_STUB)
         if 'lucide' in u: return r.fulfill(status=200,content_type='application/javascript',body='window.lucide={createIcons(){}}')
         if 'cdnjs.cloudflare.com' in u or 'font-awesome' in u.lower():
             fa_css = os.path.join(ROOT, 'vendor', 'fa', 'css', 'all.min.css')
