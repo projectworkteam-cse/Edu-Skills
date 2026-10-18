@@ -18,6 +18,8 @@ dist/
 coverage/
 *.log
 npm-debug.log*
+__pycache__/
+*.pyc
 
 # ── Editor / OS ──
 .DS_Store
