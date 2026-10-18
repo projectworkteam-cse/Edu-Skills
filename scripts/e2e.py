@@ -1,8 +1,18 @@
 # scripts/e2e.py - feature-level browser test (Playwright + Chromium). Run from the repo root:  python3 scripts/e2e.py
 # Stubs Firebase, Chart.js, lucide and /api/groq, then drives every page like a student would.
 # Exit code 1 if any check fails. Needs: pip install playwright (Chromium: PLAYWRIGHT_BROWSERS_PATH or `playwright install chromium`).
-import sys,json,re
-import os
+import sys, json, re, os
+from playwright.sync_api import sync_playwright
+
+# Globals injected dynamically at runtime via exec(head) from scripts/smoke.py;
+# declared here so IDE static analyzers (Pylance/Pyright) recognize them.
+if False:
+    SEED: dict = {}
+    CHART_STUB: str = ""
+    FB_STUB: str = ""
+    ROOT: str = ""
+    BASE: str = ""
+
 if hasattr(sys.stdout, 'reconfigure'):
     sys.stdout.reconfigure(encoding='utf-8')
 HERE=os.path.dirname(os.path.abspath(__file__))
