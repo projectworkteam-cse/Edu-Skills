@@ -11,9 +11,7 @@ const FEATURES = {
   quiz:     { max: 3500, effort: 'low' },
   notes:    { max: 3000, effort: 'low' },
   insights: { max: 2000, effort: 'low' },
-  coach:    { max: 500,  effort: 'low' },
-  // ponytail: temporary profile so pages cached before the deploy keep working. Remove after 2 weeks (see audit V1-SEC-01).
-  legacy:   { max: 1500, effort: 'low' }
+  coach:    { max: 500,  effort: 'low' }
 };
 const MAX_BODY_CHARS = 50 * 1024;
 
@@ -45,8 +43,11 @@ module.exports = async function handler(req, res) {
   if (!body || typeof body !== 'object') return err(res, 400, 'bad_json', 'Request body must be JSON.');
   if (JSON.stringify(body).length > MAX_BODY_CHARS) return err(res, 413, 'too_large', 'Request is too large.');
 
-  const profile = body.feature === undefined ? FEATURES.legacy : FEATURES[body.feature];
-  if (!profile) return err(res, 400, 'bad_feature', 'Unknown AI feature.');
+  // ponytail: legacy AI profile retired (V3-LOW-13); feature must be explicitly provided
+  if (!body.feature || typeof body.feature !== 'string' || !FEATURES[body.feature]) {
+    return err(res, 400, 'bad_feature', 'A valid AI feature must be specified.');
+  }
+  const profile = FEATURES[body.feature];
   if (!Array.isArray(body.messages) || body.messages.length === 0) return err(res, 400, 'bad_messages', '"messages" must be a non-empty array.');
 
   const messages = body.messages.slice(-20).map((m, i) => ({

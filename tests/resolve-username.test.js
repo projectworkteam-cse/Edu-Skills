@@ -34,7 +34,7 @@ test('resolve-username: rejects non-POST with 405', async () => {
 });
 
 test('resolve-username: rejects invalid username formats with 400', async () => {
-  const invalid = ['', 'ab', 'user@name', 'too_long_username_exceeding_twenty_chars', 'spaces in name', 'bad!punct'];
+  const invalid = ['', 'ab', 'a.b', 'user.name', 'user@name', 'too_long_username_exceeding_twenty_chars', 'spaces in name', 'bad!punct'];
   for (const u of invalid) {
     const r1 = await call(handler, { body: { username: u } });
     assert.strictEqual(r1.code, 400, `Expected 400 for username "${u}"`);

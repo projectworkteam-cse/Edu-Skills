@@ -54,7 +54,8 @@ async function handler(req, res) {
   const rawName = isCheck ? body.check : body.username;
   const username = String(rawName || '').trim().toLowerCase();
 
-  if (!/^[a-z0-9_.]{3,20}$/.test(username)) {
+  // ponytail: align username format with client regex and firestore.rules [a-z0-9_]{3,20} (V3-LOW-15)
+  if (!/^[a-z0-9_]{3,20}$/.test(username)) {
     return res.status(400).json({
       error: 'bad_username',
       message: 'Invalid username format.',

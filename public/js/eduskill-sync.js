@@ -6,16 +6,16 @@
 
   const isShell = (window === window.top);
 
-  // 1. Firebase Initialization
-  const CONFIG = window.FIREBASE_CONFIG || {
-    apiKey: "AIzaSyCylM-HD-CoPwoCkqdXn1bmOy8j3CJd23M",
-    authDomain: "eduskillai-3e807.firebaseapp.com",
-    projectId: "eduskillai-3e807",
-    storageBucket: "eduskillai-3e807.firebasestorage.app",
-    messagingSenderId: "655983369692",
-    appId: "1:655983369692:web:4fc758f791f9b166a24319",
-    measurementId: "G-M48G6F6CCR"
-  };
+  // 1. Firebase Initialization (consolidated EDU_FIREBASE_CONFIG V3-LOW-13)
+  const CONFIG = window.EDU_FIREBASE_CONFIG || window.FIREBASE_CONFIG || (window.__ENV__ ? {
+    apiKey: window.__ENV__.FIREBASE_API_KEY,
+    authDomain: window.__ENV__.FIREBASE_AUTH_DOMAIN,
+    projectId: window.__ENV__.FIREBASE_PROJECT_ID || window.__ENV__.projectId,
+    storageBucket: window.__ENV__.FIREBASE_STORAGE_BUCKET,
+    messagingSenderId: window.__ENV__.FIREBASE_MESSAGING_SENDER_ID,
+    appId: window.__ENV__.FIREBASE_APP_ID,
+    measurementId: window.__ENV__.FIREBASE_MEASUREMENT_ID
+  } : null);
 
   if (window.firebase && !window.firebase.apps.length) {
     try {

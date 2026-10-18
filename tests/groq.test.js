@@ -69,12 +69,13 @@ test('per-user rate limit returns 429', async () => {
   assert.strictEqual(last.code, 429);
 });
 
-test('legacy client without "feature" still works during the 2-week transition', async () => {
+test('client without "feature" is rejected with 400 (legacy profile retired V3-LOW-13)', async () => {
   mockFetch(async (url) => String(url).includes('identitytoolkit')
     ? { ok: true, json: async () => ({ users: [{ localId: 'legacy1', email: 'a@b.c', emailVerified: true }] }) }
     : { ok: true, status: 200, json: async () => ({ choices: [{ message: { content: 'old-page-ok' } }] }) });
   const r = await call(handler, { headers: good(), body: { model: 'x', messages: [{ role: 'user', content: 'hi' }] } });
-  assert.strictEqual(r.code, 200);
+  assert.strictEqual(r.code, 400);
+  assert.strictEqual(r.body.error.code, 'bad_feature');
 });
 
 test('handles timeout gracefully and returns 504 (V2-MED-23)', async () => {

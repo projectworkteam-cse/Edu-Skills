@@ -3,6 +3,8 @@
 # Exit code 1 if any check fails. Needs: pip install playwright (Chromium: PLAYWRIGHT_BROWSERS_PATH or `playwright install chromium`).
 import sys,json,re
 import os
+if hasattr(sys.stdout, 'reconfigure'):
+    sys.stdout.reconfigure(encoding='utf-8')
 HERE=os.path.dirname(os.path.abspath(__file__))
 src=open(os.path.join(HERE,'smoke.py')).read()
 head=src.split("errors={}")[0].replace("ROOT=sys.argv[1]; MODE=sys.argv[2] if len(sys.argv)>2 else 'seeded'","ROOT=os.path.join(os.path.dirname(HERE),'public'); MODE='seeded'")

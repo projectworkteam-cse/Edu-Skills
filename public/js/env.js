@@ -4,20 +4,21 @@
 (function () {
   'use strict';
 
-  // Base client configuration
+  // ponytail: read from consolidated window.EDU_FIREBASE_CONFIG (V3-LOW-13)
+  const cfg = window.EDU_FIREBASE_CONFIG || window.FIREBASE_CONFIG || {};
   window.__ENV__ = window.__ENV__ || {
-    FIREBASE_API_KEY: "AIzaSyCylM-HD-CoPwoCkqdXn1bmOy8j3CJd23M",
-    FIREBASE_AUTH_DOMAIN: "eduskillai-3e807.firebaseapp.com",
-    FIREBASE_PROJECT_ID: "eduskillai-3e807",
-    projectId: "eduskillai-3e807",
-    FIREBASE_STORAGE_BUCKET: "eduskillai-3e807.firebasestorage.app",
-    FIREBASE_MESSAGING_SENDER_ID: "655983369692",
-    FIREBASE_APP_ID: "1:655983369692:web:4fc758f791f9b166a24319",
-    FIREBASE_MEASUREMENT_ID: "G-M48G6F6CCR"
+    FIREBASE_API_KEY: cfg.apiKey,
+    FIREBASE_AUTH_DOMAIN: cfg.authDomain,
+    FIREBASE_PROJECT_ID: cfg.projectId,
+    projectId: cfg.projectId,
+    FIREBASE_STORAGE_BUCKET: cfg.storageBucket,
+    FIREBASE_MESSAGING_SENDER_ID: cfg.messagingSenderId,
+    FIREBASE_APP_ID: cfg.appId,
+    FIREBASE_MEASUREMENT_ID: cfg.measurementId
   };
 
   function updateFirebaseConfig() {
-    window.FIREBASE_CONFIG = {
+    window.FIREBASE_CONFIG = window.EDU_FIREBASE_CONFIG || {
       apiKey: window.__ENV__.FIREBASE_API_KEY,
       authDomain: window.__ENV__.FIREBASE_AUTH_DOMAIN,
       projectId: window.__ENV__.FIREBASE_PROJECT_ID || window.__ENV__.projectId,
