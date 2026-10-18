@@ -93,6 +93,20 @@
         .menu-btn {
             margin-right: 15px;
             font-size: 20px;
+            min-width: 40px;
+            min-height: 40px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            font-family: inherit;
+        }
+
+        .menu-btn::after {
+            content: "Menu";
+            font-size: 13px;
+            font-weight: 600;
+            margin-left: 6px;
+            color: var(--text-main);
         }
 
         .tasks-toggle-btn {
@@ -215,6 +229,11 @@
             font-size: 18px;
             cursor: pointer;
             position: relative;
+            min-width: 40px;
+            min-height: 40px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
         }
 
         .badge {
@@ -468,6 +487,26 @@
             gap: 10px;
             padding: 8px 0;
             border-bottom: 1px solid #f1f5f9;
+        }
+
+        .task-del {
+            background: none;
+            border: none;
+            color: var(--text-sub);
+            cursor: pointer;
+            padding: 2px 6px;
+            font-size: 16px;
+            line-height: 1;
+            border-radius: 4px;
+            opacity: 0.6;
+            transition: opacity 0.15s, color 0.15s, background 0.15s;
+            margin-left: auto;
+        }
+
+        .task-del:hover, .task-del:focus-visible {
+            opacity: 1;
+            color: var(--accent-red);
+            background: #fee2e2;
         }
 
         .task-item:last-child {
@@ -729,13 +768,21 @@
             display: flex;
             align-items: center;
             justify-content: center;
-            font-size: 22px;
+            gap: 2px;
+            font-size: 18px;
             cursor: pointer;
             box-shadow: 0 8px 24px rgba(99, 102, 241, 0.3);
             border: none;
             color: white;
             z-index: 99;
             transition: transform 0.2s;
+        }
+
+        .ai-fab::after {
+            content: "AI";
+            font-size: 11px;
+            font-weight: 800;
+            letter-spacing: 0.5px;
         }
 
         .ai-fab:hover {
@@ -846,6 +893,20 @@
         }
 
         /* ── RESPONSIVE: adapts to all screen sizes ─────────────────────────── */
+        @media (min-width: 1024px) {
+            .sidebar {
+                position: static;
+                transform: none !important;
+                box-shadow: none !important;
+            }
+            .sidebar-overlay {
+                display: none !important;
+            }
+            .menu-btn {
+                display: none !important;
+            }
+        }
+
         @media (min-width: 1600px) {
             .right-panel {
                 min-width: 340px;
@@ -1842,7 +1903,7 @@ INSTRUCTIONS:
             updateNotificationBadge();
         }
 
-        // ── 2. TOGGLE TASK DONE & SYNC WITH SUBJECT TOPICS ─────────────────────
+        // ── 2. TOGGLE TASK DONE (V3-MED-07) ───────────────────────────────────
         function toggleTask(id) {
             const tasks = loadTasks();
             const t = tasks.find(t => String(t.id) === String(id));
@@ -1851,62 +1912,15 @@ INSTRUCTIONS:
             t.done = !t.done;
             if (!t.done) t.hidden = false;
 
-            // V2-HIGH-12: Total completed tasks derived dynamically from stored task shards
-
-            // V1-FUNC-01: Match topic by stable ID first, with exact-name fallback for legacy unlinked tasks
-            const subjects = (window.EduStorage && window.EduStorage.readJSON)
-                ? window.EduStorage.readJSON('subjects', [])
-                : [];
-            let updatedSubjects = false;
-
-            const tRefTid = t.ref && (t.ref.tid || t.ref.topicId);
-            const cleanTaskText = String(t.text || '').trim().toLowerCase();
-
-            subjects.forEach(sub => {
-                if (sub.topics) {
-                    sub.topics.forEach(tp => {
-                        const tpId = tp.id || tp.tid;
-                        const matchById = tRefTid && tpId && (tpId === tRefTid);
-                        const matchByName = !tRefTid && (
-                            String(tp.topic || '').trim().toLowerCase() === cleanTaskText ||
-                            String(tp.name || '').trim().toLowerCase() === cleanTaskText
-                        );
-                        if (matchById || matchByName) {
-                            tp.done = t.done;
-                            updatedSubjects = true;
-                        }
-                    });
-                }
-            });
-
-            if (updatedSubjects) {
-                if (window.EduStorage && window.EduStorage.writeJSON) {
-                    window.EduStorage.writeJSON('subjects', subjects);
-                } else {
-                    localStorage.setItem('subjects', JSON.stringify(subjects));
-                }
-            }
-
-            const iframe = document.getElementById('pageViewport');
-            if (iframe && iframe.contentWindow) {
-                if (typeof iframe.contentWindow.renderSubjects === 'function') {
-                    iframe.contentWindow.renderSubjects();
-                }
-                if (typeof iframe.contentWindow.loadSubjectProgress === 'function') {
-                    iframe.contentWindow.loadSubjectProgress();
-                }
-                if (typeof iframe.contentWindow.loadMetrics === 'function') {
-                    iframe.contentWindow.loadMetrics();
-                }
-                if (typeof iframe.contentWindow.loadBadges === 'function') {
-                    iframe.contentWindow.loadBadges();
-                }
-                if (typeof iframe.contentWindow.loadInsight === 'function') {
-                    iframe.contentWindow.loadInsight();
-                }
-            }
-
+            // ponytail: linked tasks track study effort; topic completion requires passing quiz (V3-MED-07)
             saveTasks(tasks);
+            renderTasks();
+            updateNotificationBadge();
+        }
+
+        // ── DELETE SINGLE TASK (V3-MED-08) ────────────────────────────────────
+        function deleteTask(id) {
+            saveTasks(loadTasks().filter(t => String(t.id) !== String(id)));
             renderTasks();
             updateNotificationBadge();
         }
@@ -1930,9 +1944,10 @@ INSTRUCTIONS:
                 const safeId = escapeHTML(String(t.id));
                 return `
                 <div class="task-item">
-                    <input type="checkbox" class="task-checkbox" ${t.done ? 'checked' : ''} onchange="toggleTask('${safeId}')" title="${isManual ? 'Click to mark complete' : 'Mark task complete or pass topic quiz'}">
+                    <input type="checkbox" class="task-checkbox" ${t.done ? 'checked' : ''} onchange="toggleTask('${safeId}')" title="Tick when you have studied this">
                     <span class="task-text ${t.done ? 'done' : ''}">${escapeHTML(t.text)}</span>
                     ${sourceBadge}
+                    <button type="button" class="task-del" aria-label="Delete task: ${escapeHTML(t.text)}" onclick="deleteTask('${safeId}')" title="Delete task">&times;</button>
                 </div>`;
             }).join('');
 

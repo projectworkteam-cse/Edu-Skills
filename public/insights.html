@@ -851,24 +851,37 @@ Return ONLY valid JSON (no markdown) in this exact shape:
                     temperature: 0.5
                 });
 
-                const raw = data.choices?.[0]?.message?.content || '[]';
-                const recs = parseJSONLoose(raw, 'recommendations');
-
-                const byKey = {};
-                recs.forEach(r => { byKey[(r.subject || '') + '||' + (r.topic || '')] = r; });
-
-                list.forEach(w => {
-                    const r = byKey[w.subject + '||' + w.topic];
-                    if (r) {
-                        if (r.why) w.tip = r.why;
-                        if (r.action) w.action = r.action;
+                const raw = data.choices?.[0]?.message?.content || '';
+                let recs = [];
+                try {
+                    if (window.EduAI && typeof window.EduAI.parseAiJson === 'function') {
+                        const parsed = window.EduAI.parseAiJson(raw, v => Array.isArray(v) || (v && Array.isArray(v.recommendations)));
+                        recs = Array.isArray(parsed) ? parsed : (parsed?.recommendations || []);
+                    } else {
+                        recs = parseJSONLoose(raw, 'recommendations');
                     }
-                });
+                    if (!recs || !recs.length) {
+                        throw new Error('No recommendations returned');
+                    }
+                    const byKey = {};
+                    recs.forEach(r => { byKey[(r.subject || '') + '||' + (r.topic || '')] = r; });
 
-                setStatus('weakStatus', 'Weakness analysis complete.', 'ok');
+                    list.forEach(w => {
+                        const r = byKey[w.subject + '||' + w.topic];
+                        if (r) {
+                            if (r.why) w.tip = r.why;
+                            if (r.action) w.action = r.action;
+                        }
+                    });
+
+                    setStatus('weakStatus', 'Weakness analysis complete.', 'ok');
+                } catch (parseErr) {
+                    console.warn('Weakness AI recommendations unavailable:', parseErr.message);
+                    setStatus('weakStatus', 'AI tips unavailable. Showing built-in study suggestions.', 'error');
+                }
             } catch (err) {
                 console.warn('Weakness AI failed:', err.message);
-                setStatus('weakStatus', 'AI tips unavailable (offline or quota). Showing built-in study suggestions.', 'error');
+                setStatus('weakStatus', 'AI tips unavailable. Showing built-in study suggestions.', 'error');
             } finally {
                 btn.disabled = false;
                 btn.innerHTML = '<i class="fas fa-wand-magic-sparkles"></i> Detect Weak Areas';

@@ -31,3 +31,16 @@ test('readWeakTopics: reads and unwraps from mock storage', () => {
   };
   assert.deepStrictEqual(readWeakTopics(mockStorage), [{ topic: 'Physics', score: 70 }]);
 });
+
+test('V3-MED-12: invalid or empty AI recommendation response throws AiParseError', () => {
+  const { parseAiJson } = require('../public/js/services/ai-client.js');
+  
+  // Valid response parses
+  const valid = '```json\n{"recommendations":[{"subject":"Math","topic":"Algebra","why":"Need practice","action":"Solve 5 problems"}]}\n```';
+  const parsed = parseAiJson(valid, v => Array.isArray(v?.recommendations));
+  assert.strictEqual(parsed.recommendations.length, 1);
+
+  // Invalid or empty responses throw rather than returning deceptive success
+  assert.throws(() => parseAiJson('', v => Array.isArray(v?.recommendations)));
+  assert.throws(() => parseAiJson('not valid json', v => Array.isArray(v?.recommendations)));
+});

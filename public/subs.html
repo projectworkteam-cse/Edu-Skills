@@ -826,7 +826,16 @@ Only JSON.`;
             notifyDataChange();
         }
 
-        // ── EDIT SUBJECT & EXAM (V1-FUNC-06) ──────────────────────────────────
+        function getTaskStorageKeys() {
+            const keys = [];
+            for (let i = 0; i < localStorage.length; i++) {
+                const k = localStorage.key(i);
+                if (k && (k.startsWith('tasks_') || k.includes('__tasks_') || k === 'tasks')) keys.push(k);
+            }
+            return keys;
+        }
+
+        // ── EDIT SUBJECT & EXAM (V1-FUNC-06, V3-MED-11) ──────────────────────
         function editSubject(subjectId) {
             const currentSubs = getSubjects();
             const sub = currentSubs.find(s => String(s.id) === String(subjectId));
@@ -841,6 +850,59 @@ Only JSON.`;
             title.textContent = `Edit Subject: ${sub.name}`;
             errEl.style.display = 'none';
 
+            let workingTopics = (sub.topics || []).map(t => ({
+                id: t.id || ('top_' + Math.random().toString(36).slice(2, 9)),
+                sid: sub.id,
+                name: t.name || t.topic || '',
+                topic: t.topic || t.name || '',
+                minutes: Number(t.minutes || 30),
+                done: !!t.done
+            }));
+
+            function renderModalTopics() {
+                const container = document.getElementById('editTopicsList');
+                if (!container) return;
+                if (!workingTopics.length) {
+                    container.innerHTML = '<p style="font-size:12px; color:var(--text-sub); margin:4px 0;">No topics yet. Add one below.</p>';
+                    return;
+                }
+                container.innerHTML = workingTopics.map((t, idx) => `
+                    <div style="display:flex; gap:6px; align-items:center;">
+                        <input type="text" class="edit-topic-val" data-idx="${idx}" value="${escapeHTML(t.topic || t.name)}" maxlength="60" style="flex:1; padding:6px 10px; font-size:12px; border:1px solid var(--card-border); border-radius:6px; box-sizing:border-box;">
+                        <button type="button" class="btn-danger" onclick="removeTopicFromSubject(${idx})" style="padding:4px 8px; font-size:11px; background:#fef2f2; color:#dc2626; border:1px solid #fecaca; border-radius:6px; cursor:pointer;" title="Remove topic">&times;</button>
+                    </div>
+                `).join('');
+            }
+
+            window.removeTopicFromSubject = function(idx) {
+                workingTopics.splice(idx, 1);
+                renderModalTopics();
+            };
+
+            window.addTopicToSubject = function() {
+                const inp = document.getElementById('editNewTopicInput');
+                if (!inp) return;
+                const n = (inp.value || '').trim().slice(0, 60);
+                if (!n) return;
+                const lower = n.toLowerCase();
+                if (workingTopics.some(t => (t.topic || t.name || '').toLowerCase() === lower)) {
+                    errEl.textContent = `Topic "${n}" already exists.`;
+                    errEl.style.display = 'block';
+                    return;
+                }
+                errEl.style.display = 'none';
+                workingTopics.push({
+                    id: 'top_' + Math.random().toString(36).slice(2, 9) + Date.now().toString(36).slice(-4),
+                    sid: sub.id,
+                    name: n,
+                    topic: n,
+                    minutes: 30,
+                    done: false
+                });
+                inp.value = '';
+                renderModalTopics();
+            };
+
             fields.innerHTML = `
                 <div>
                     <label style="font-size:12px; font-weight:600; color:var(--text-sub); display:block; margin-bottom:4px;">Subject Name</label>
@@ -854,7 +916,17 @@ Only JSON.`;
                         <option value="Hard" ${sub.difficulty === 'Hard' ? 'selected' : ''}>Hard</option>
                     </select>
                 </div>
+                <div style="margin-top:4px;">
+                    <label style="font-size:12px; font-weight:600; color:var(--text-sub); display:block; margin-bottom:4px;">Topics</label>
+                    <div id="editTopicsList" style="display:flex; flex-direction:column; gap:6px; max-height:160px; overflow-y:auto; padding:2px;"></div>
+                    <div style="display:flex; gap:6px; margin-top:8px;">
+                        <input type="text" id="editNewTopicInput" placeholder="Add new topic..." maxlength="60" style="flex:1; padding:6px 10px; font-size:12px; border:1px solid var(--card-border); border-radius:6px; box-sizing:border-box;" onkeydown="if(event.key==='Enter'){event.preventDefault(); addTopicToSubject();}">
+                        <button type="button" class="btn-primary" onclick="addTopicToSubject()" style="padding:6px 12px; font-size:12px; white-space:nowrap;">Add</button>
+                    </div>
+                </div>
             `;
+
+            renderModalTopics();
 
             saveBtn.onclick = function () {
                 const newName = (document.getElementById('editSubjectName').value || '').trim();
@@ -878,9 +950,49 @@ Only JSON.`;
                     return;
                 }
 
+                // Read current values of existing topic inputs
+                const topicInputs = fields.querySelectorAll('.edit-topic-val');
+                topicInputs.forEach(input => {
+                    const idx = Number(input.dataset.idx);
+                    const val = (input.value || '').trim().slice(0, 60);
+                    if (val && workingTopics[idx]) {
+                        workingTopics[idx].name = val;
+                        workingTopics[idx].topic = val;
+                    }
+                });
+
+                if (!workingTopics.length) {
+                    errEl.textContent = 'Subject must have at least one topic.';
+                    errEl.style.display = 'block';
+                    return;
+                }
+
+                // Detect deleted topic IDs and clean up linked tasks (V3-MED-11)
+                const origTids = new Set((sub.topics || []).map(t => String(t.id || t.tid)));
+                const remainTids = new Set(workingTopics.map(t => String(t.id || t.tid)));
+                const deletedTids = [...origTids].filter(id => !remainTids.has(id));
+
+                if (deletedTids.length) {
+                    const delSet = new Set(deletedTids);
+                    getTaskStorageKeys().forEach(k => {
+                        const arr = (window.EduStorage && window.EduStorage.readJSON)
+                            ? window.EduStorage.readJSON(k, [])
+                            : [];
+                        if (Array.isArray(arr)) {
+                            const cleaned = arr.filter(t => !t || !t.ref || !delSet.has(String(t.ref.tid || t.ref.topicId)));
+                            if (cleaned.length !== arr.length) {
+                                if (window.EduStorage && window.EduStorage.writeJSON) window.EduStorage.writeJSON(k, cleaned);
+                                else localStorage.setItem(k, JSON.stringify(cleaned));
+                            }
+                        }
+                    });
+                }
+
                 const oldName = sub.name;
                 sub.name = newName;
                 sub.difficulty = newDiff;
+                sub.topics = workingTopics;
+                sub.totalMinutes = workingTopics.reduce((sum, item) => sum + Number(item.minutes || 30), 0);
                 saveSubjects(currentSubs);
 
                 if (oldName !== newName) {

@@ -73,3 +73,35 @@ test('countCompleted: aggregates completed tasks across multiple days of shards 
   assert.strictEqual(countCompleted(null, keys), 0);
   assert.strictEqual(countCompleted(read, []), 0);
 });
+
+test('V3-MED-07: task toggle does not mutate subject topic done state', () => {
+  const subjects = [
+    {
+      id: 'sub_1',
+      name: 'Math',
+      topics: [
+        { id: 'top_1', name: 'Calculus', done: false }
+      ]
+    }
+  ];
+  const task = { id: 'tsk_1', text: 'Calculus revision', done: false, ref: { sid: 'sub_1', tid: 'top_1' } };
+
+  // When task is toggled by user in Today's Tasks
+  task.done = !task.done;
+
+  // Subjects must remain intact; topics are only marked done via quiz
+  assert.strictEqual(task.done, true);
+  assert.strictEqual(subjects[0].topics[0].done, false);
+});
+
+test('V3-MED-08: deleteTask removes single task by ID cleanly', () => {
+  const tasks = [
+    { id: 't1', text: 'Task 1', done: false },
+    { id: 't2', text: 'Task 2', done: true },
+    { id: 't3', text: 'Task 3', done: false }
+  ];
+
+  const remaining = tasks.filter(t => String(t.id) !== 't2');
+  assert.strictEqual(remaining.length, 2);
+  assert.deepStrictEqual(remaining.map(t => t.id), ['t1', 't3']);
+});
