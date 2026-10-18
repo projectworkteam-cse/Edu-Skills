@@ -201,6 +201,11 @@
             background-color: #f1f5f9;
         }
 
+        .timetable-table thead th.day-col {
+            background-color: #eef2ff;
+            z-index: 3;
+        }
+
         .timetable-table tbody tr td.day-col {
             background-color: #e2e8f0;
             font-weight: 800;
@@ -216,6 +221,19 @@
             position: sticky;
             left: 0;
             z-index: 2;
+        }
+
+        .swipe-hint {
+            display: none;
+            font-size: 11px;
+            font-weight: 600;
+            color: var(--text-sub);
+            margin-bottom: 8px;
+            text-align: right;
+        }
+
+        .swipe-hint i {
+            margin-right: 4px;
         }
 
         .break-badge {
@@ -630,6 +648,10 @@
             .timetable-table {
                 min-width: 640px;
             }
+
+            .swipe-hint {
+                display: block;
+            }
         }
 
         @media (max-width: 640px) {
@@ -743,6 +765,8 @@
                         </button>
                     </div>
                     <div id="smartRescheduleNote" class="smart-note" style="display:none;"></div>
+
+                    <div class="swipe-hint" aria-hidden="true"><i class="fas fa-arrows-left-right"></i> Swipe sideways to see more times</div>
 
                     <div id="timetableGrid">
                         <div style="text-align:center; padding: 20px;">Loading Timetable...</div>
