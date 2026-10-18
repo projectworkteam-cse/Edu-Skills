@@ -19,7 +19,7 @@
 <script src="js/eduskill-sync.js"></script>
 
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
     <title>EDU-SKILL'S AI</title>
 
     <link rel="stylesheet" href="css/base.css">
@@ -52,6 +52,7 @@
             color: var(--text-main);
             display: flex;
             height: 100vh;
+            height: 100dvh;
             overflow: hidden;
         }
 
@@ -110,7 +111,7 @@
             color: var(--text-main);
         }
 
-        .tasks-toggle-btn {
+        .icon-btn.tasks-toggle-btn {
             display: none;
         }
 
@@ -221,6 +222,7 @@
             display: flex;
             align-items: center;
             gap: 20px;
+            margin-left: auto;
         }
 
         .icon-btn {
@@ -961,7 +963,7 @@
                 left: 10px;
                 width: auto;
                 max-width: 360px;
-                height: min(480px, calc(100vh - 130px));
+                height: min(480px, calc(100dvh - 130px));
                 margin-left: auto;
             }
 
@@ -970,7 +972,7 @@
                 right: 20px;
             }
 
-            .tasks-toggle-btn {
+            .icon-btn.tasks-toggle-btn {
                 display: inline-flex;
             }
 
@@ -983,6 +985,7 @@
                 min-width: 0;
                 max-width: none;
                 height: 100vh;
+                height: 100dvh;
                 margin: 0;
                 padding: 60px 16px 16px;
                 border-left: 1px solid var(--card-border);
@@ -1031,6 +1034,7 @@
                 left: 8px;
                 max-width: none;
                 height: calc(100vh - 105px);
+                height: calc(100dvh - 105px);
             }
         }
 
