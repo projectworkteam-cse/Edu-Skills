@@ -34,6 +34,15 @@ with sync_playwright() as p:
         if 'gstatic.com/firebasejs' in u: return r.fulfill(status=200,content_type='application/javascript',body=FB_STUB.replace('%SEED%',json.dumps(SEED)) if 'firebase-app-compat' in u else '//stub')
         if 'chart' in u and 'jsdelivr' in u: return r.fulfill(status=200,content_type='application/javascript',body=CHART_STUB)
         if 'lucide' in u: return r.fulfill(status=200,content_type='application/javascript',body='window.lucide={createIcons(){}}')
+        if 'cdnjs.cloudflare.com' in u or 'font-awesome' in u.lower():
+            fa_css = os.path.join(ROOT, 'vendor', 'fa', 'css', 'all.min.css')
+            if os.path.exists(fa_css):
+                if u.endswith('.woff2'):
+                    wp = os.path.join(ROOT, 'vendor', 'fa', 'webfonts', u.split('/')[-1].split('?')[0])
+                    if os.path.exists(wp):
+                        return r.fulfill(status=200, content_type='font/woff2', body=open(wp, 'rb').read())
+                return r.fulfill(status=200, content_type='text/css', body=open(fa_css, 'rb').read())
+            return r.continue_()
         if u.startswith(BASE): return r.continue_()
         return r.fulfill(status=200,body='')
     page.route('**/*',route)
@@ -42,9 +51,26 @@ with sync_playwright() as p:
     def clr():
         for _ in range(4):
             if page.is_visible('#reminderClose'): print('  [reminder popup]',page.inner_text('#reminderTitle')); page.click('#reminderClose'); page.wait_for_timeout(150)
-    def fr(): return [f for f in page.frames if f!=page.main_frame][0]
     def go(n):
         clr(); page.evaluate(f"navigate('{n}.html', null, false)"); page.wait_for_timeout(1200)
+    def fr(): return [f for f in page.frames if f!=page.main_frame][0]
+    # icon font really applied (needs real FA: do not stub font-awesome in this check)
+    ff = page.evaluate("getComputedStyle(document.querySelector('.fa-bars, .fas'),'::before').fontFamily")
+    ok('V4-CRIT-01 icons use Font Awesome', 'Font Awesome' in ff, ff)
+    page.wait_for_timeout(500)
+    fa_ok = page.evaluate("document.fonts.check('900 16px \"Font Awesome 6 Free\"')")
+    ok('V4-CRIT-01 FA font loaded', fa_ok)
+
+    # layout widths
+    for w in (1024, 1180, 1280, 1440, 768, 390):
+        page.set_viewport_size({'width': w, 'height': 800})
+        page.wait_for_timeout(300)
+        over = page.evaluate("document.documentElement.scrollWidth - document.documentElement.clientWidth")
+        clip = page.evaluate("""(()=>{const c=document.querySelector('.right-panel .card');const b=document.querySelector('.btn-add-task');
+          if(!c||!b||!b.offsetParent)return 0;return Math.max(0, b.getBoundingClientRect().right-c.getBoundingClientRect().right)})()""")
+        ok(f'V4-HIGH-02 no overflow at {w}', over <= 1 and clip <= 1, f'over={over} clip={clip}')
+    page.set_viewport_size({'width': 1280, 'height': 800})
+
     # header identity
     ok('header shows profile name', 'Stu' in page.inner_text('#userName'), page.inner_text('#userName'))
     # shell tasks
