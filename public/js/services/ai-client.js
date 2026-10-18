@@ -39,8 +39,11 @@
         let token = '';
         if (typeof getToken === 'function') {
           token = await getToken();
-        } else if (typeof window !== 'undefined' && window.firebase?.auth) {
-          const u = window.firebase.auth().currentUser;
+        } else if (typeof window !== 'undefined') {
+          // Pages run inside an iframe that has no Firebase SDK; the signed-in user lives in the parent shell (same origin).
+          const fb = (window.firebase && window.firebase.auth) ? window.firebase
+            : (() => { try { return window.parent !== window && window.parent.firebase && window.parent.firebase.auth ? window.parent.firebase : null; } catch (_) { return null; } })();
+          const u = fb && fb.auth().currentUser;
           if (u) token = await u.getIdToken();
         }
 

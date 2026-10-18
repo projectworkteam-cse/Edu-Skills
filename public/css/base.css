@@ -73,3 +73,8 @@ html, body {
 ::-webkit-scrollbar-thumb:hover {
   background: #94a3b8;
 }
+
+/* Phones: keep the last content clear of the floating AI button and the home bar */
+@media (max-width: 768px) {
+  body { padding-bottom: calc(84px + env(safe-area-inset-bottom, 0px)); }
+}
