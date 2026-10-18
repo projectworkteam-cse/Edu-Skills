@@ -151,3 +151,29 @@
   color: var(--accent-red, #ef4444);
   border: 1px solid #fecaca;
 }
+
+/* ── SYNC STATUS PILL (V3-HIGH-03) ────────────────────────────────────────── */
+.sync-pill {
+  font-size: 12px;
+  padding: 4px 10px;
+  border-radius: var(--radius-full, 9999px);
+  background: #eef2ff;
+  color: #3730a3;
+  font-weight: 500;
+  display: inline-flex;
+  align-items: center;
+  user-select: none;
+  transition: all 0.2s ease;
+}
+.sync-pill[hidden] {
+  display: none !important;
+}
+.sync-pill[data-state="error"] {
+  background: #fee2e2;
+  color: #991b1b;
+  cursor: pointer;
+}
+.sync-pill[data-state="offline"] {
+  background: #fef3c7;
+  color: #92400e;
+}

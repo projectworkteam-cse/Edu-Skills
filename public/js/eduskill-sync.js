@@ -411,6 +411,12 @@
     }
   }
 
+  // ponytail: one function that calls the existing debounced flush / immediate sync (V3-HIGH-03)
+  window.eduskillSyncNow = function () {
+    clearTimeout(window.__eduskillSyncTimer);
+    return syncCloud();
+  };
+
   // Immediate flush on hide or close (V1-DATA-04)
   if (typeof window !== 'undefined') {
     window.addEventListener('visibilitychange', () => {

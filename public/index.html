@@ -1066,6 +1066,7 @@
                 <i class="fas fa-bars"></i>
             </button>
             <div class="header-actions">
+                <span id="syncPill" class="sync-pill" role="status" aria-live="polite" hidden></span>
 
             <button class="icon-btn tasks-toggle-btn" id="tasksToggleBtn" aria-label="Today's Tasks" onclick="event.stopPropagation(); toggleTasksPanel()">
                 <i class="fas fa-list-check"></i>
@@ -1133,6 +1134,38 @@
                         window.addEventListener('eduskill-cloud-ready', () => {
                             renderHeaderName();
                         });
+
+                        // V3-HIGH-03: Cloud save/load status pill & retry
+                        (function() {
+                            const pill = document.getElementById('syncPill');
+                            if (!pill) return;
+                            const LABEL = {
+                                synced: 'Saved',
+                                syncing: 'Saving...',
+                                dirty: 'Saving...',
+                                offline: 'Offline - kept on this device',
+                                error: 'Not saved - tap to retry'
+                            };
+                            function showSync(status) {
+                                if (!pill) return;
+                                pill.hidden = (status === 'synced' && !pill.dataset.pinned);
+                                pill.textContent = LABEL[status] || '';
+                                pill.dataset.state = status;
+                            }
+                            window.addEventListener('eduskill-sync-status', e => showSync(e.detail && e.detail.status));
+                            pill.addEventListener('click', () => {
+                                if (pill.dataset.state === 'error' && typeof window.eduskillSyncNow === 'function') {
+                                    window.eduskillSyncNow();
+                                }
+                            });
+                            window.addEventListener('beforeunload', e => {
+                                if (['dirty', 'syncing', 'error'].includes(pill.dataset.state)) {
+                                    e.preventDefault();
+                                    e.returnValue = '';
+                                }
+                            });
+                            if (window.eduskillSyncState) showSync(window.eduskillSyncState);
+                        })();
                     </script>
                 </div>
 

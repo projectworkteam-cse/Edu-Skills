@@ -538,6 +538,10 @@
             if (material.length > 15000) {
                 material = material.slice(0, 15000);
             }
+            if (!material && !subject) {
+                setStatus('Pick a subject or paste some study text first.', 'error');
+                return;
+            }
             const customTopic = document.getElementById('noteCustomTopic').value.trim().slice(0, 80);
             const selectedTopic = document.getElementById('noteTopic').value;
 
@@ -616,7 +620,9 @@ Match the structure, depth and wording to the "${style}" style. Do not add any t
                 document.getElementById('notesCard').scrollIntoView({ behavior: 'smooth', block: 'start' });
             } catch (err) {
                 console.warn('Notes generation failed:', err.message);
-                setStatus('Failed to generate notes. Check your connection or API key and try again.', 'error');
+                setStatus(err.message && /invalid notes/i.test(err.message)
+                    ? 'The AI answer was not usable. Please try again.'
+                    : 'Could not generate notes. Check your internet connection and try again.', 'error');
             } finally {
                 btn.disabled = false;
                 btn.innerHTML = '<i class="fas fa-file-pen"></i> Generate Notes';

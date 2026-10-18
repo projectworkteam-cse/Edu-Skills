@@ -733,6 +733,13 @@
                                 <input type="text" id="deleteConfirmInput" placeholder="Confirm your username" />
                             </div>
                         </div>
+                        <div class="form-group" id="deletePasswordGroup" style="margin-bottom: 16px;">
+                            <label for="deletePasswordInput" style="font-size: 12px; font-weight: 600; color: var(--red-text);">Account Password (for email/password accounts):</label>
+                            <div class="input-wrapper" style="margin-top: 4px;">
+                                <i class="fas fa-lock input-icon"></i>
+                                <input type="password" id="deletePasswordInput" placeholder="Enter your password" />
+                            </div>
+                        </div>
                         <div style="display: flex; justify-content: flex-end;">
                             <button class="btn-danger" onclick="deleteUserAccount()">
                                 <i class="fas fa-trash-can"></i> Delete Account Permanently
@@ -984,10 +991,22 @@
             }
 
             try {
-                // 1) Reauthenticate if Google provider before deleting
+                // 1) Reauthenticate before deleting (Google popup or email/password credential)
                 const isGoogle = (user.providerData || []).some(p => p.providerId === 'google.com');
-                if (isGoogle && typeof user.reauthenticateWithPopup === 'function' && fb?.auth?.GoogleAuthProvider) {
-                    await user.reauthenticateWithPopup(new fb.auth.GoogleAuthProvider());
+                if (isGoogle) {
+                    if (typeof user.reauthenticateWithPopup === 'function' && fb?.auth?.GoogleAuthProvider) {
+                        await user.reauthenticateWithPopup(new fb.auth.GoogleAuthProvider());
+                    }
+                } else {
+                    const pwd = (document.getElementById('deletePasswordInput')?.value || '').trim();
+                    if (!pwd) {
+                        showToast('Enter your password to confirm.', false);
+                        return;
+                    }
+                    if (typeof user.reauthenticateWithCredential === 'function' && fb?.auth?.EmailAuthProvider) {
+                        const cred = fb.auth.EmailAuthProvider.credential(user.email, pwd);
+                        await user.reauthenticateWithCredential(cred); // throws before ANY data is deleted
+                    }
                 }
 
                 // 2) Batch delete all app shards (including tasks_YYYY_MM), username doc, and user doc
