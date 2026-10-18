@@ -432,17 +432,17 @@
                 gap: 18px;
             }
 
+            /* ponytail: let tab row wrap on small screens so Security & Password is not cut (V3-LOW-14) */
             .settings-nav {
                 display: flex;
+                flex-wrap: wrap;
                 gap: 6px;
-                overflow-x: auto;
                 padding: 8px;
             }
 
             .tab-btn {
                 width: auto;
-                white-space: nowrap;
-                flex-shrink: 0;
+                flex: 1 1 auto;
             }
         }
 
