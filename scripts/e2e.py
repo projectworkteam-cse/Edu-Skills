@@ -121,12 +121,20 @@ with sync_playwright() as p:
         d.accept()
 
     page.on('dialog', on_dialog)
-    calls: list[str] = []
+    calls: list[tuple[str, bool]] = []
 
     def groq(r):
         body = json.loads(r.request.post_data or '{}')
         feature = body.get('feature', '')
-        calls.append(feature)
+        auth = r.request.headers.get('authorization', '')
+        has_token = bool(auth.startswith('Bearer ') and len(auth) >= 10)
+        calls.append((feature, has_token))
+        if not has_token:
+            return r.fulfill(
+                status=401,
+                content_type='application/json',
+                body='{"error":{"code":"unauthorized","message":"Missing or invalid token"}}'
+            )
         r.fulfill(
             status=200,
             content_type='application/json',
@@ -356,6 +364,7 @@ with sync_playwright() as p:
     ok('V3-HIGH-03 failed cloud read shows a visible sync warning (#syncPill)', p4.is_visible('#syncPill'))
     ctx4.close()
 
+    ok('V5-CRIT-01 every AI call sends a token', bool(calls) and all(t for _, t in calls), f'{len(calls)} calls')
     print('AI calls', calls)
     print('page errors', errs)
     print(sum(1 for r in R if r[1]), '/', len(R))
