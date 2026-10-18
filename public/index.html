@@ -361,6 +361,8 @@
 
         .card-header {
             display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
             justify-content: space-between;
             align-items: center;
             margin-bottom: 12px;
@@ -384,6 +386,7 @@
 
         .add-task-row input[type="text"] {
             flex: 1;
+            min-width: 0;
             height: 34px;
             padding: 6px 10px;
             border: 1px solid var(--card-border);
@@ -400,6 +403,7 @@
         }
 
         .btn-add-task {
+            flex-shrink: 0;
             background: linear-gradient(135deg, var(--primary-blue), var(--primary-purple));
             color: white;
             border: none;
@@ -894,7 +898,7 @@
         }
 
         /* ── RESPONSIVE: adapts to all screen sizes ─────────────────────────── */
-        @media (min-width: 1024px) {
+        @media (min-width: 1280px) {
             .sidebar {
                 position: static;
                 transform: none !important;
